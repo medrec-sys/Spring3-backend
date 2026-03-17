@@ -2,7 +2,9 @@ package fun.medrec.spring.utils;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.VectorStore;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -11,19 +13,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class EmbeddingUtil {
+public final class VectorUtil {
     private static EmbeddingModel embeddingModel;
     private static final int MAX_LENGTH = 2000;
     private static final double SIMILARITY_THRESHOLD = 0.6;
 
 
-    private EmbeddingUtil() {
+    private VectorUtil() {
         throw new AssertionError();
     }
 
     // 创建线程转换成向量
-    private static List<float[]> embed(PdfUtil.PdfData pdfData) {
-        List<String> pageContents = pdfData.getTexts();
+    private static List<float[]> embed(TextUtil.TextData textData) {
+        List<String> pageContents = textData.getTexts();
 
         // 合并
         float[][] embeddingsArray = new float[pageContents.size()][];
@@ -73,9 +75,9 @@ public final class EmbeddingUtil {
     }
 
     // 句子合并
-    private static PdfUtil.PdfData merge(PdfUtil.PdfData pdfData, List<Boolean> cosIfCombine) {
-        List<String> pageContents = pdfData.getTexts();
-        List<Integer> pageNumbers = pdfData.getIndexes();
+    private static TextUtil.TextData merge(TextUtil.TextData textData, List<Boolean> cosIfCombine) {
+        List<String> pageContents = textData.getTexts();
+        List<Integer> pageNumbers = textData.getIndexes();
 
         List<String> sentences = new ArrayList<>();
         StringBuilder sentence = new StringBuilder(pageContents.getFirst());
@@ -95,18 +97,18 @@ public final class EmbeddingUtil {
         sentences.add(sentence.toString());
         pageNums.add(pageNum);
 
-        return new PdfUtil.PdfData(pdfData.getPdfName(), sentences, pageNums);
+        return new TextUtil.TextData(textData.getFileName(), sentences, pageNums);
     }
 
     // 根据语义合并句子
-    public static PdfUtil.PdfData mergeSentence(PdfUtil.PdfData pdfData, EmbeddingModel em) {
+    public static TextUtil.TextData mergeSentence(TextUtil.TextData textData, EmbeddingModel em) {
         embeddingModel = em;
 
-        List<float[]> embeddings = embed(pdfData);
+        List<float[]> embeddings = embed(textData);
 
         List<Boolean> cosIfCombine = getSimilarityArray(embeddings);
 
-        return merge(pdfData, cosIfCombine);
+        return merge(textData, cosIfCombine);
     }
 
     static double cos(float[] a, float[] b) {
@@ -120,5 +122,21 @@ public final class EmbeddingUtil {
         double norm2 = vec2.norm2Number().doubleValue();
 
         return (norm1 * norm2 == 0) ? 0 : (dot / (norm1 * norm2));
+    }
+
+    public static void addDocuments(VectorStore vectorStore, List<Document> documents) {
+        // 分批存储
+        int batchSize = 10;
+        int total = documents.size();
+        int n = total / batchSize;
+        int last = total % batchSize;
+        for (int i = 0; i < n; i++) {
+            List<Document> batch = documents.subList(i * batchSize, (i + 1) * batchSize);
+            vectorStore.add(batch);
+        }
+        if (last > 0) {
+            List<Document> batch = documents.subList(n * batchSize, total);
+            vectorStore.add(batch);
+        }
     }
 }

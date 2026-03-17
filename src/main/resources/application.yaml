@@ -25,6 +25,11 @@ spring:
         options:
           model: "text-embedding-v4"
           dimensions: 1024
+    vectorstore:
+      redis:
+        initialize-schema: true  # 是否初始化schema
+        index-name: spring-ai-index  # 索引名称
+        prefix: "medical:"  # Redis key前缀
     chat:
       memory:
         repository:
@@ -42,6 +47,7 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: 5000ms
+      timeout: 5000
 
 mybatis-plus:
   global-config:
