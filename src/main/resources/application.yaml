@@ -1,0 +1,63 @@
+spring:
+  config:
+    import:
+      - optional:classpath:args-dev.yaml
+  servlet:
+    multipart:
+      max-file-size: 1024MB
+      max-request-size: 10240MB
+  application:
+    name: common
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${mysql.url}:${mysql.port}/${spring.datasource.name}
+    username: ${mysql.username} #   ??
+    password: ${mysql.password} # ??
+  ai:
+    openai: # openai
+      base-url: "https://dashscope.aliyuncs.com/compatible-mode"
+      api-key:  ${A_LI_YUN-API-KEY} # ?????Api key
+      chat:
+        options:
+          model: "qwen-plus"
+          temperature: 0.8
+      embedding:
+        options:
+          model: "text-embedding-v4"
+          dimensions: 1024
+    chat:
+      memory:
+        repository:
+          jdbc:
+            schema: classpath:/SQL/initMemory.sql
+  data:
+    redis:
+      host: ${redis.url}
+      port: ${redis.port}
+      password: ${redis.password}
+      dataBase: 0
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: 5000ms
+
+mybatis-plus:
+  global-config:
+    db-config:
+      id-type: auto
+      table-prefix: t_
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:/mapper/**/*.xml
+server:
+  port: ${internet.PORT}
+
+logging:
+  file:
+    name: myapp.log
+
+  level:
+    root: INFO

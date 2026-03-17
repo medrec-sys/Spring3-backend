@@ -1,0 +1,25 @@
+# 参数配置
+
+# 阿里云百炼AI大模型Api key
+# 阿里云百炼平台 https://bailian.console.aliyun.com/#/home
+A_LI_YUN-API-KEY: sk-1ff40835f4a14e39970c2bbfacde8156
+
+mysql:
+  url: "localhost"
+  port: 9006
+  username: root
+  password: 123456
+
+redis:
+  url: "localhost"
+  port: 9379
+  password: 123456
+
+
+internet:
+  PORT: 8080
+minio:
+  clientpoint: http://localhost:9090
+  serverPoint: http://localhost:9090
+  access-key: minioadmin  # 访问密钥（默认 minioadmin）
+  secret-key: minioadmin  # 密钥（默认 minioadmin）
