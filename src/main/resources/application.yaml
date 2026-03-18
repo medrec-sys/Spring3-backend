@@ -7,12 +7,13 @@ spring:
       max-file-size: 1024MB
       max-request-size: 10240MB
   application:
-    name: common
+    name: medrec
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${mysql.url}:${mysql.port}/${spring.datasource.name}
-    username: ${mysql.username} #   ??
-    password: ${mysql.password} # ??
+    name: medrec
+    username: ${mysql.username}
+    password: ${mysql.password}
   ai:
     openai: # openai
       base-url: "https://dashscope.aliyuncs.com/compatible-mode"

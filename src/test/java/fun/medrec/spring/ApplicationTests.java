@@ -1,6 +1,12 @@
 package fun.medrec.spring;
 
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
+import fun.medrec.spring.domain.common.PageDTO;
+import fun.medrec.spring.domain.common.PageVO;
+import fun.medrec.spring.domain.entity.Vector;
+import fun.medrec.spring.service.VectorService;
 import fun.medrec.spring.utils.VectorUtil;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +25,17 @@ import java.util.List;
 @SpringBootTest
 class ApplicationTests {
     @Autowired
-    private EmbeddingModel embeddingModel;
+    EmbeddingModel embeddingModel;
+
+    @Autowired
+    VectorService vectorService;
 
     @Autowired
     VectorStore vectorStore;
 
 
     @Test
-    void testExtractPdfText() {
+    void test01() {
         String pdfPath = "D:\\Source\\windows\\Downloads\\高血压.pdf";
 
         TextUtil.TextData textData = TextUtil.readPdf(pdfPath);
@@ -46,5 +55,12 @@ class ApplicationTests {
                 document -> System.out.println(document.getText())
         );
 
+    }
+
+    @Test
+    void text02() {
+        PageDTO<Vector> objectPageDTO = new PageDTO<>();
+        PageVO<Vector> pages = vectorService.getPage(objectPageDTO);
+        log.info("{}", JSON.toJSONString(pages, SerializerFeature.PrettyFormat));
     }
 }
