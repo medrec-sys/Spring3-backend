@@ -26,11 +26,8 @@ spring:
         options:
           model: "text-embedding-v4"
           dimensions: 1024
-    vectorstore:
-      redis:
-        initialize-schema: true  # 是否初始化schema
-        index-name: spring-ai-index  # 索引名称
-        prefix: "medical:"  # Redis key前缀
+          max-length: 2000 # 文本分割的最大长度
+          similarity: 0.6 #  相似度阈值(用于合并相似的文本)
     chat:
       memory:
         repository:

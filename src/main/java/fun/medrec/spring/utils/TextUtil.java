@@ -140,8 +140,8 @@ public final class TextUtil {
         List<Document> documents = new ArrayList<>();
         for (int i = 0; i < texts.size(); i++) {
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("id", textData.getId());
-            metadata.put("page", indexes.get(i));
+            metadata.put("id", textData.getId() + "");
+            metadata.put("page", indexes.get(i) + "");
             Document document = new Document(texts.get(i), metadata);
             documents.add(document);
 
