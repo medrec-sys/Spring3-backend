@@ -21,18 +21,11 @@ spring:
       chat:
         options:
           model: "qwen-plus"
-          temperature: 0.8
       embedding:
         options:
           model: "text-embedding-v4"
-          dimensions: 1024
           max-length: 2000 # 文本分割的最大长度
           similarity: 0.6 #  相似度阈值(用于合并相似的文本)
-    chat:
-      memory:
-        repository:
-          jdbc:
-            schema: classpath:/SQL/initMemory.sql
   data:
     redis:
       host: ${redis.url}

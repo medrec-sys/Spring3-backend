@@ -16,5 +16,10 @@ public class Agent {
     private Integer id;
     private String name;
     private String description;
+    private String prompt;
+    private Double temperature;
+    private int maxMessage;
+    private int topK;
+    private Double similarity;
     private Integer createBy;
 }

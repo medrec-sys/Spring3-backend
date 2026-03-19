@@ -1,17 +1,22 @@
 package fun.medrec.spring;
 
 
+import fun.medrec.spring.domain.Ai.AiAgent;
 import fun.medrec.spring.domain.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
+import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.domain.entity.Vector;
+import fun.medrec.spring.service.AgentService;
 import fun.medrec.spring.service.VectorService;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -23,7 +28,8 @@ class ApplicationTests {
     @Autowired
     VectorService vectorService;
 
-
+    @Autowired
+    AgentService agentService;
 
     @Test
     void test01() {
@@ -48,12 +54,23 @@ class ApplicationTests {
                 document -> System.out.println(document.getText())
         );
 
-        vectorStore.release();
+
 
     }
 
     @Test
     void text02() {
+        PageDTO<Agent> agentPageDTO = new PageDTO<>();
+        Agent agent = agentService.getPage(agentPageDTO).getRows().getFirst();
 
-    }
+        PageDTO<Vector> vectorPageDTO = new PageDTO<>();
+        Vector vector = vectorService.getPage(vectorPageDTO).getRows().getFirst();
+        MyVectorStore vectorStore = new MyVectorStore(vector);
+
+        AiAgent aiAgent = new AiAgent(agent);
+        aiAgent.addVectorStore(vectorStore);
+        log.info("开始对话");
+
+        Flux<String> talk = aiAgent.chat("如何治理老年高血压");
+        talk.toIterable().forEach(System.out::print);    }
 }

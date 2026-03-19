@@ -1,11 +1,14 @@
 package fun.medrec.spring.config;
 
+import fun.medrec.spring.domain.Ai.AiAgent;
 import fun.medrec.spring.domain.Ai.MyVectorStore;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
 
@@ -32,12 +35,18 @@ public class Initializer {
     @Value("${spring.ai.openai.embedding.options.model}")
     private String model;
 
+    @Value("${spring.ai.openai.chat.options.model}")
+    private String chatModel;
+
     @Autowired
     StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @PostConstruct
     public void initAiUtil() {
         JedisPooled jedisPooled = new JedisPooled(host, port, username, password);
         MyVectorStore.init(stringRedisTemplate, jedisPooled, maxLength, similarity, baseUrl, apiKey, model);
+        AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel);
     }
 }
