@@ -8,6 +8,11 @@ spring:
       max-request-size: 10240MB
   application:
     name: medrec
+  jackson:
+    date-format: yyyy-MM-dd
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${mysql.url}:${mysql.port}/${spring.datasource.name}
@@ -17,7 +22,7 @@ spring:
   ai:
     openai: # openai
       base-url: "https://dashscope.aliyuncs.com/compatible-mode"
-      api-key:  ${A_LI_YUN-API-KEY} # ?????Api key
+      api-key:  ${A_LI_YUN-API-KEY}
       chat:
         options:
           model: "qwen-plus"

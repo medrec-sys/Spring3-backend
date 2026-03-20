@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Date;
+
 @TableName
 @Data
 @NoArgsConstructor
@@ -22,4 +24,5 @@ public class Agent {
     private int topK;
     private Double similarity;
     private Integer createBy;
+    private Date createTime;
 }

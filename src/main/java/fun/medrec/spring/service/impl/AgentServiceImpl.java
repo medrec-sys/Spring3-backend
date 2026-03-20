@@ -3,26 +3,99 @@ package fun.medrec.spring.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import fun.medrec.spring.domain.Ai.AiAgent;
+import fun.medrec.spring.domain.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Agent;
+import fun.medrec.spring.domain.entity.AgentVector;
+import fun.medrec.spring.domain.entity.Vector;
+import fun.medrec.spring.exception.BusinessException;
+import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.AgentMapper;
+import fun.medrec.spring.mapper.AgentVectorMapper;
 import fun.medrec.spring.service.AgentService;
+import fun.medrec.spring.service.VectorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Service
 public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements AgentService {
     @Autowired
     private AgentMapper agentMapper;
 
+    @Autowired
+    AgentVectorMapper agentVectorMapper;
+
+    @Autowired
+    VectorService vectorService;
+
     @Override
     public PageVO<Agent> getPage(PageDTO<Agent> page) {
         Page<Agent> agentPage = new Page<>(page.getPageNum(), page.getPageSize());
 
         LambdaQueryWrapper<Agent> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Agent::getCreateBy, UserContext.getId());
 
         Page<Agent> result = agentMapper.selectPage(agentPage, queryWrapper);
         return new PageVO<>(result.getTotal(), result.getRecords());
+    }
+
+    @Override
+    public void addVector(Integer agentId, Integer vectorId) {
+        LambdaQueryWrapper<AgentVector> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(AgentVector::getAgentId, agentId).eq(AgentVector::getVectorId, vectorId);
+        List<AgentVector> agentVectors = agentVectorMapper.selectList(queryWrapper);
+        if (!agentVectors.isEmpty()) {
+            throw new BusinessException("请勿重复添加");
+        }
+        agentVectorMapper.insert(new AgentVector(null, agentId, vectorId));
+    }
+
+    @Override
+    public AiAgent createAgent(Integer id) {
+        Agent agent = getById(id);
+        if (agent == null) {
+            throw new BusinessException("Ai不存在,id:" + id);
+        }
+        if (!agent.getCreateBy().equals(UserContext.getId())) {
+            throw new BusinessException("无权限操作");
+        }
+
+        AiAgent aiAgent = new AiAgent(agent);
+
+        LambdaQueryWrapper<AgentVector> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(AgentVector::getAgentId, id);
+        List<Integer> vectorIds = agentVectorMapper.selectList(queryWrapper).stream().map(AgentVector::getVectorId).toList();
+
+        List<Vector> vectors = vectorService.getByIds(vectorIds);
+        for (Vector vector : vectors) {
+            MyVectorStore myVectorStore = new MyVectorStore(vector);
+            aiAgent.addVectorStore(myVectorStore);
+        }
+        return aiAgent;
+    }
+
+    @Override
+    public AiAgent reBuildAgent(Integer id) {
+        AiAgent.deleteAgent(id);
+        return createAgent(id);
+    }
+
+    @Override
+    public Integer create(Agent agent) {
+        agent.setCreateBy(UserContext.getId());
+        agent.setId(null);
+        agentMapper.insert(agent);
+        return agent.getId();
+    }
+
+    @Override
+    public void removeVector(Integer agentId, Integer vectorId) {
+        LambdaQueryWrapper<AgentVector> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(AgentVector::getAgentId, agentId).eq(AgentVector::getVectorId, vectorId);
+        agentVectorMapper.delete(queryWrapper);
     }
 }

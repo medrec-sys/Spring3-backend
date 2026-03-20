@@ -1,9 +1,12 @@
 package fun.medrec.spring.domain.Ai;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
@@ -28,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Data
 @AllArgsConstructor
@@ -45,6 +49,8 @@ public class MyVectorStore {
     private static String embeddingName;
     private static StringRedisTemplate stringRedisTemplate;
 
+    @Getter
+    private static Cache<Integer, MyVectorStore> storeCache;
     public static void init(StringRedisTemplate stringRedisTemplate, JedisPooled jedisPooled, int maxLength, double similarityThreshold, String baseUrl, String apiKey, String embeddingName) {
         MyVectorStore.stringRedisTemplate = stringRedisTemplate;
         MyVectorStore.jedisPooled = jedisPooled;
@@ -53,8 +59,20 @@ public class MyVectorStore {
         MyVectorStore.apiKey = apiKey;
         MyVectorStore.baseUrl = baseUrl;
         MyVectorStore.embeddingName = embeddingName;
+
+        MyVectorStore.storeCache = Caffeine.newBuilder()
+                .maximumSize(1000)
+                .expireAfterAccess(30, TimeUnit.MINUTES)
+                .build();
     }
 
+    public static MyVectorStore getStore(Integer id) {
+        return storeCache.getIfPresent(id);
+    }
+
+    public static void deleteStore(Integer id) {
+        storeCache.invalidate(id);
+    }
 
     // 创建向量模型
     private EmbeddingModel createEmbeddingModel(Vector vector) {
@@ -240,6 +258,8 @@ public class MyVectorStore {
                 .initializeSchema(true)
                 .build();
         this.embeddingModel = embeddingModel;
+        log.info("加载向量库:" + vector.getId());
+        MyVectorStore.storeCache.put(vector.getId(),  this);
     }
 
     // 根据语义合并句子

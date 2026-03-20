@@ -17,12 +17,12 @@ public class UserController {
     @Autowired
     private UserService userService;
 
-    @RequestMapping("/list")
+    @PostMapping("/list")
     public Result<PageVO<User>> getPage(@RequestBody PageDTO<User> page) {
         return Result.success(userService.getPage(page));
     }
 
-    @RequestMapping("/{id}")
+    @GetMapping("/{id}")
     public Result<User> getById(@PathVariable String id) {
         return Result.success(userService.getById(id));
     }
@@ -33,8 +33,8 @@ public class UserController {
     }
 
     @PostMapping
-    public Result<Void> add(@RequestBody User user) {
-        return userService.save(user) ? Result.success() : Result.error("添加失败");
+    public Result<Integer> add(@RequestBody User user) {
+        return Result.success(userService.create(user));
     }
 
     @PutMapping

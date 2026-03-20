@@ -8,6 +8,7 @@ import fun.medrec.spring.service.KnowledgeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/knowledge")
@@ -17,24 +18,24 @@ public class KnowledgeController {
     @Autowired
     private KnowledgeService knowledgeService;
 
-    @RequestMapping("/list")
+    @PostMapping("/list")
     public Result<PageVO<Knowledge>> getPage(@RequestBody PageDTO<Knowledge> page) {
         return Result.success(knowledgeService.getPage(page));
     }
 
-    @RequestMapping("/{id}")
+    @GetMapping("/{id}")
     public Result<Knowledge> getById(@PathVariable String id) {
         return Result.success(knowledgeService.getById(id));
     }
 
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Integer id) {
-        return knowledgeService.removeById(id) ? Result.success() : Result.error("删除失败");
+    public Result<Integer> delete(@PathVariable Integer id) {
+        return Result.success(knowledgeService.delete(id));
     }
 
-    @PostMapping
-    public Result<Void> add(@RequestBody Knowledge knowledge) {
-        return knowledgeService.save(knowledge) ? Result.success() : Result.error("添加失败");
+    @PostMapping("/{vectorId}")
+    public Result<Integer> add(@RequestParam MultipartFile file, @PathVariable Integer vectorId) {
+        return  Result.success(knowledgeService.save(file, vectorId));
     }
 
     @PutMapping

@@ -16,12 +16,12 @@ public class AgentController {
     @Autowired
     private AgentService agentService;
 
-    @RequestMapping("/list")
+    @PostMapping("/list")
     public Result<PageVO<Agent>> getPage(@RequestBody PageDTO<Agent> page) {
         return Result.success(agentService.getPage(page));
     }
 
-    @RequestMapping("/{id}")
+    @GetMapping("/{id}")
     public Result<Agent> getById(@PathVariable String id) {
         return Result.success(agentService.getById(id));
     }
@@ -32,12 +32,27 @@ public class AgentController {
     }
 
     @PostMapping
-    public Result<Void> add(@RequestBody Agent agent) {
-        return agentService.save(agent) ? Result.success() : Result.error("添加失败");
+    public Result<Integer> add(@RequestBody Agent agent) {
+        return Result.success(agentService.create(agent));
     }
 
     @PutMapping
     public Result<Void> update(@RequestBody Agent agent) {
-        return agentService.updateById(agent) ? Result.success() : Result.error("更新失败");
+        agentService.updateById(agent);
+        agentService.reBuildAgent(agent.getId());
+        return Result.success();
+    }
+
+    @PostMapping("/knowledge")
+    public Result<Void> addVector(@RequestParam Integer agentId, @RequestParam Integer vectorId) {
+        agentService.addVector(agentId, vectorId);
+        return Result.success();
+    }
+
+    @DeleteMapping("/knowledge")
+    public Result<Void> deleteVector(@RequestParam Integer agentId, @RequestParam Integer vectorId) {
+        agentService.removeVector(agentId, vectorId);
+        agentService.reBuildAgent(agentId);
+        return Result.success();
     }
 }

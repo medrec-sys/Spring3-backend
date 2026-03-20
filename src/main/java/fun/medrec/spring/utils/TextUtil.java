@@ -11,6 +11,7 @@ import org.xml.sax.helpers.DefaultHandler;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.*;
 
@@ -72,9 +73,7 @@ public final class TextUtil {
 
     }
 
-    public static TextData readPdf(String pdfPath) {
-
-
+    public static TextData readPdf(InputStream inputStream, String fileName) {
         try {
             // 自定义 ContentHandler
             PdfHandler handler = new PdfHandler();
@@ -84,10 +83,8 @@ public final class TextUtil {
             PDFParser pdfParser = new PDFParser();
 
             // 执行解析
-            try (FileInputStream inputStream = new FileInputStream(pdfPath)) {
-                Metadata metadata = new Metadata();
-                pdfParser.parse(inputStream, handler, metadata, context);
-            }
+            Metadata metadata = new Metadata();
+            pdfParser.parse(inputStream, handler, metadata, context);
 
 
             List<String> pageContents = handler.getPageContents();
@@ -127,10 +124,18 @@ public final class TextUtil {
                 i++;
             }
 
-            return new TextData(new File(pdfPath).getName(), pageContentsAfterDeal, indexes);
+            return new TextData(fileName, pageContentsAfterDeal, indexes);
         } catch (Exception e) {
-            log.error("", e);
-            return null;
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static TextData readPdf(String pdfPath) {
+        try( FileInputStream inputStream = new FileInputStream(pdfPath)) {
+            String fileName = new File(pdfPath).getName();
+            return readPdf(inputStream, fileName);
+        }  catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
