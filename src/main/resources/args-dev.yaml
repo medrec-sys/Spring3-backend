@@ -19,7 +19,8 @@ redis:
 internet:
   PORT: 8080
 minio:
-  clientpoint: http://localhost:9090
+  clientPoint: http://localhost:9090
   serverPoint: http://localhost:9090
-  access-key: minioadmin  # 访问密钥（默认 minioadmin）
-  secret-key: minioadmin  # 密钥（默认 minioadmin）
+  accessKey: minioadmin  # 访问密钥（默认 minioadmin）
+  secretKey: minioadmin  # 密钥（默认 minioadmin）
+  bucket: medrec

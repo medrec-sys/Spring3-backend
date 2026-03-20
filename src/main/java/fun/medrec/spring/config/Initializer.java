@@ -2,15 +2,16 @@ package fun.medrec.spring.config;
 
 import fun.medrec.spring.domain.Ai.AiAgent;
 import fun.medrec.spring.domain.Ai.MyVectorStore;
+import io.minio.MinioClient;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
+import fun.medrec.spring.utils.MinioUtil;
 
 @Component
 @Slf4j
@@ -38,6 +39,17 @@ public class Initializer {
     @Value("${spring.ai.openai.chat.options.model}")
     private String chatModel;
 
+    @Value("${minio.clientPoint}")
+    private String clientPoint;
+    @Value("${minio.serverPoint}")
+    private String serverPoint;
+    @Value("${minio.accessKey}")
+    private String accessKey;
+    @Value("${minio.secretKey}")
+    private String secretKey;
+    @Value("${minio.bucket}")
+    private String bucket;
+
     @Autowired
     StringRedisTemplate stringRedisTemplate;
     @Autowired
@@ -47,6 +59,13 @@ public class Initializer {
     public void initAiUtil() {
         JedisPooled jedisPooled = new JedisPooled(host, port, username, password);
         MyVectorStore.init(stringRedisTemplate, jedisPooled, maxLength, similarity, baseUrl, apiKey, model);
+
         AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel);
+
+        MinioClient minioClient = MinioClient.builder()
+                .endpoint(serverPoint)
+                .credentials(accessKey, secretKey)
+                .build();
+        MinioUtil.init(minioClient, bucket, clientPoint);
     }
 }
