@@ -1,8 +1,20 @@
 package fun.medrec.spring.utils;
 
+import com.optimaize.langdetect.DetectedLanguage;
+import com.optimaize.langdetect.LanguageDetector;
+import com.optimaize.langdetect.LanguageDetectorBuilder;
+import com.optimaize.langdetect.i18n.LdLocale;
+import com.optimaize.langdetect.ngram.NgramExtractors;
+import com.optimaize.langdetect.profiles.LanguageProfileReader;
+import com.optimaize.langdetect.text.CommonTextObjectFactories;
+import com.optimaize.langdetect.text.TextObject;
+import com.optimaize.langdetect.text.TextObjectFactory;
+import fun.medrec.spring.exception.BusinessException;
 import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import opennlp.tools.sentdetect.SentenceDetectorME;
+import opennlp.tools.sentdetect.SentenceModel;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.pdf.PDFParser;
@@ -11,8 +23,8 @@ import org.xml.sax.helpers.DefaultHandler;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.time.Instant;
 import java.util.*;
 
 @Slf4j
@@ -26,6 +38,30 @@ public final class TextUtil {
     }
 
     private static final int MAX_LENGTH = 2000;
+    // 语言识别
+    private static final LanguageDetector languageDetector;
+    // 英文断句
+    private static final SentenceDetectorME sentenceDetector;
+
+    static {
+        try {
+            languageDetector = LanguageDetectorBuilder.create(NgramExtractors.standard())
+                    .withProfiles(new LanguageProfileReader().readAllBuiltIn())
+                    .build();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        try (InputStream modelIn = TextUtil.class.getResourceAsStream("/model/en-sent.bin")) {
+            if (modelIn == null) {
+                throw new BusinessException("modelIn为null");
+            }
+            SentenceModel model = new SentenceModel(modelIn);
+            sentenceDetector = new SentenceDetectorME(model);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     static class PdfHandler extends DefaultHandler {
         StringBuilder currentPageText = new StringBuilder();
@@ -73,6 +109,45 @@ public final class TextUtil {
 
     }
 
+    public static String getLanguage(List<String> texts) {
+        StringBuilder sb = new StringBuilder();
+        for (String content : texts) {
+            if (content != null && !content.isEmpty()) {
+                sb.append(content);
+                // 添加空格分隔，避免单词连在一起影响检测
+                sb.append(' ');
+            }
+        }
+
+        String combinedText = sb.toString();
+
+        TextObjectFactory textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText();
+        TextObject textObject = textObjectFactory.forText(sb);
+        List<DetectedLanguage> probabilities = languageDetector.getProbabilities(textObject);
+        LdLocale locale = probabilities.getFirst().getLocale();
+        double similarity = probabilities.getFirst().getProbability();
+        for (DetectedLanguage probability : probabilities) {
+            if (probability.getProbability() > similarity) {
+                locale = probability.getLocale();
+                similarity = probability.getProbability();
+            }
+        }
+        return locale.getLanguage();
+    }
+
+    //分割句子
+    public static String[] splitSentence(String text, String  language) {
+        if ("zh".equals(language)) {
+            return text.replaceAll("\\s", "").split("[。！？]");
+        } else if ("en".equals(language)) {
+            return sentenceDetector.sentDetect(text);
+        } else {
+            return text.split("[.!?]");
+        }
+    }
+
+
+
     public static TextData readPdf(InputStream inputStream, String fileName) {
         try {
             // 自定义 ContentHandler
@@ -89,12 +164,15 @@ public final class TextUtil {
 
             List<String> pageContents = handler.getPageContents();
 
+            // 判断语言
+            String language = getLanguage(pageContents);
+            log.info("文档语言: {}", language);
 
             // 出空格和分割
             List<String> pageContentsAfterDeal = new ArrayList<>();
             List<Integer> indexes = new ArrayList<>();
             for (int i = 0; i < pageContents.size(); i++) {
-                String[] sentence = pageContents.get(i).replaceAll("\\s", "").split("[。]");
+                String[] sentence = splitSentence(pageContents.get(i), language);
                 for (String sentence1 : sentence) {
                     if (sentence1.length() < MAX_LENGTH) {
                         pageContentsAfterDeal.add(sentence1);

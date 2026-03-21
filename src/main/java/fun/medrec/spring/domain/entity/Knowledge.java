@@ -19,6 +19,7 @@ public class Knowledge {
     private String name;
     private String path;
     private Integer vectorId;
+    private Integer chunk;
     private Integer createBy;
     private Date createTime;
 }

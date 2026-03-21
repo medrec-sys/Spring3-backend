@@ -25,7 +25,9 @@ public class KnowledgeController {
 
     @GetMapping("/{id}")
     public Result<Knowledge> getById(@PathVariable String id) {
-        return Result.success(knowledgeService.getById(id));
+
+        return Result.success(knowledgeService.getById(id)
+        );
     }
 
     @DeleteMapping("/{id}")

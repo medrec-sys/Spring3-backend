@@ -56,6 +56,7 @@ create table t_knowledge
     name        varchar(50)  not null comment '源文件名称',
     path        varchar(200) not null comment '源文件路径',
     vector_id   int          not null comment '向量id',
+    chunk       int          not null comment '分块数',
     create_by   int          not null comment '创建人',
     create_time timestamp    not null default current_timestamp() comment '创建时间'
 ) comment ='知识库表';

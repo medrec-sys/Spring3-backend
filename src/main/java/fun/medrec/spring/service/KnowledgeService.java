@@ -13,5 +13,7 @@ public interface KnowledgeService extends IService<Knowledge> {
 
     Integer delete(Integer id);
 
+    Knowledge getById(Integer id);
+
     void deleteByVectorId(Integer id);
 }
