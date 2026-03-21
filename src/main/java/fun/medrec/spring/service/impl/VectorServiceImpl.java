@@ -2,7 +2,7 @@ package fun.medrec.spring.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import fun.medrec.spring.domain.Ai.MyVectorStore;
+import fun.medrec.spring.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Vector;
@@ -52,10 +52,11 @@ public class VectorServiceImpl extends ServiceImpl<VectorMapper, Vector> impleme
     @Override
     @Transactional
     public Integer delete(Integer id) {
+        knowledgeService.deleteByVectorId(id);
         LambdaQueryWrapper<Vector> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Vector::getId, id);
         vectorMapper.deleteById(id);
-        knowledgeService.deleteByVectorId(id);
+        MyVectorStore.deleteStore(id);
         return id;
     }
 
@@ -67,7 +68,7 @@ public class VectorServiceImpl extends ServiceImpl<VectorMapper, Vector> impleme
         vector.setIndexName("_");
         vector.setPrefix("_");
         vectorMapper.insert(vector);
-        vector.setPrefix(vector.getId() + "_");
+        vector.setPrefix(vector.getId() + ":");
         vector.setIndexName(vector.getId() + "_index");
         vectorMapper.updateById(vector);
         return vector.getId();

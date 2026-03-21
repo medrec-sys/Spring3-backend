@@ -46,6 +46,7 @@ public class AgentController {
     @PostMapping("/knowledge")
     public Result<Void> addVector(@RequestParam Integer agentId, @RequestParam Integer vectorId) {
         agentService.addVector(agentId, vectorId);
+        agentService.reBuildAgent(agentId);
         return Result.success();
     }
 

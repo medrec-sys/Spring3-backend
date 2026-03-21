@@ -1,7 +1,7 @@
 package fun.medrec.spring.config;
 
-import fun.medrec.spring.domain.Ai.AiAgent;
-import fun.medrec.spring.domain.Ai.MyVectorStore;
+import fun.medrec.spring.Ai.AiAgent;
+import fun.medrec.spring.Ai.MyVectorStore;
 import io.minio.MinioClient;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;

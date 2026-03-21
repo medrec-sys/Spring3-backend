@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.j256.simplemagic.ContentType;
-import fun.medrec.spring.domain.Ai.MyVectorStore;
+import fun.medrec.spring.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Knowledge;
@@ -14,11 +14,11 @@ import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.KnowledgeMapper;
 import fun.medrec.spring.mapper.VectorMapper;
 import fun.medrec.spring.service.KnowledgeService;
-import fun.medrec.spring.service.VectorService;
 import fun.medrec.spring.utils.MinioUtil;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +41,9 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         LambdaQueryWrapper<Knowledge> queryWrapper = new LambdaQueryWrapper<>();
 
         Page<Knowledge> result = knowledgeMapper.selectPage(knowlePage, queryWrapper);
+        result.getRecords().forEach(knowledge -> {
+            knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath()));
+        });
         return new PageVO<>(result.getTotal(), result.getRecords());
     }
 
@@ -52,6 +55,7 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         if (contentType == null || !contentType.equals(ContentType.PDF.getMimeType())) {
             throw new BusinessException("不支持文件格式:" + contentType);
         }
+        String fileExtension = ContentType.fromMimeType(contentType).getFileExtensions()[0];
         MyVectorStore store = MyVectorStore.getStore(vectorId);
         if (store == null) {
             Vector vector = vectorMapper.selectById(vectorId);
@@ -64,21 +68,24 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         int userId = UserContext.getId();
 
         String name = multipartFile.getOriginalFilename();
-        String path = MinioUtil.getFileUrl(userId + "/" + vectorId + "/" +  System.currentTimeMillis() + "." + contentType);
+        String path = userId + "/" + vectorId + "/" +  System.currentTimeMillis() + "." + fileExtension;
+
+        TextUtil.TextData textData = TextUtil.readPdf(multipartFile.getInputStream(), name);
+        textData = store.mergeSentence(textData);
 
         Knowledge knowledge = new Knowledge();
         knowledge.setName(name);
         knowledge.setPath(path);
         knowledge.setVectorId(vectorId);
+        knowledge.setChunk(textData.getIndexes().size());
         knowledge.setCreateBy(userId);
         knowledgeMapper.insert(knowledge);
         MinioUtil.loadFile(multipartFile, path);
-        TextUtil.TextData textData = TextUtil.readPdf(multipartFile.getInputStream(), name);
+
         textData.setId(knowledge.getId());
+        List<Document> documents = TextUtil.TextToDocument(textData);
+        store.addDocuments(documents);
 
-
-        TextUtil.TextData textData1 = store.mergeSentence(textData);
-        store.addDocuments(TextUtil.TextToDocument(textData1));
 
 
         return knowledge.getId();
@@ -94,12 +101,19 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         knowledgeMapper.deleteById(id);
         MyVectorStore store = MyVectorStore.getStore(knowledge.getVectorId());
         if (store == null) {
-            Vector vector = vectorMapper.selectById(id);
+            Vector vector = vectorMapper.selectById(knowledge.getVectorId());
             store = new MyVectorStore(vector);
         }
-        store.delete(id, knowledge.getVectorId());
+        store.delete(id, knowledge.getChunk());
         MinioUtil.deleteFile(knowledge.getPath());
         return id;
+    }
+
+    @Override
+    public Knowledge getById(Integer id) {
+        Knowledge byId = super.getById(id);
+        byId.setPath(MinioUtil.getFileUrl(byId.getPath()));
+        return byId;
     }
 
     @Override
@@ -115,7 +129,7 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
             store = new MyVectorStore(vector);
         }
         for (Knowledge knowledge : knowledges) {
-            store.delete(id, knowledge.getVectorId());
+            store.delete(knowledge.getId(), knowledge.getChunk());
             MinioUtil.deleteFile(knowledge.getPath());
         }
     }

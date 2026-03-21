@@ -1,6 +1,6 @@
 package fun.medrec.spring.controller;
 
-import fun.medrec.spring.domain.Ai.AiAgent;
+import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.service.AgentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

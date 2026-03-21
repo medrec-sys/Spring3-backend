@@ -1,14 +1,13 @@
 package fun.medrec.spring;
 
 
-import fun.medrec.spring.domain.Ai.AiAgent;
-import fun.medrec.spring.domain.Ai.MyVectorStore;
+import fun.medrec.spring.Ai.AiAgent;
+import fun.medrec.spring.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.service.AgentService;
 import fun.medrec.spring.service.VectorService;
-import fun.medrec.spring.utils.MinioUtil;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
@@ -16,12 +15,8 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockMultipartFile;
 import reactor.core.publisher.Flux;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
 import java.util.List;
 
 
@@ -77,22 +72,4 @@ class ApplicationTests {
 
         Flux<String> talk = aiAgent.chat("如何治理老年高血压");
         talk.toIterable().forEach(System.out::print);    }
-
-    @Test
-    void test03() throws IOException {
-        String pdfPath = "D:\\Source\\windows\\Downloads\\高血压.pdf";
-        File file = new File(pdfPath);
-        FileInputStream input = new FileInputStream(file);
-
-        MockMultipartFile multipartFile = new MockMultipartFile(
-                "file",                     // 表单字段名
-                file.getName(),             // 原始文件名
-                "application/pdf",          // 内容类型
-                input                       // 文件输入流
-        );
-
-        MinioUtil.loadFile(multipartFile, "hypertension.pdf");
-        String fileUrl = MinioUtil.getFileUrl("hypertension.pdf");
-        log.info("文件上传完成，文件地址：{}", fileUrl);
-    }
 }

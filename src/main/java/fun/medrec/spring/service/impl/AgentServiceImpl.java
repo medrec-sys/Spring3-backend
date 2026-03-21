@@ -3,8 +3,8 @@ package fun.medrec.spring.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import fun.medrec.spring.domain.Ai.AiAgent;
-import fun.medrec.spring.domain.Ai.MyVectorStore;
+import fun.medrec.spring.Ai.AiAgent;
+import fun.medrec.spring.Ai.MyVectorStore;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Agent;
@@ -19,6 +19,7 @@ import fun.medrec.spring.service.VectorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -64,18 +65,19 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements
             throw new BusinessException("无权限操作");
         }
 
-        AiAgent aiAgent = new AiAgent(agent);
 
         LambdaQueryWrapper<AgentVector> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(AgentVector::getAgentId, id);
         List<Integer> vectorIds = agentVectorMapper.selectList(queryWrapper).stream().map(AgentVector::getVectorId).toList();
 
         List<Vector> vectors = vectorService.getByIds(vectorIds);
+        List<MyVectorStore> stores = new ArrayList<>();
         for (Vector vector : vectors) {
             MyVectorStore myVectorStore = new MyVectorStore(vector);
-            aiAgent.addVectorStore(myVectorStore);
+            stores.add(myVectorStore);
         }
-        return aiAgent;
+
+        return new AiAgent(agent, stores);
     }
 
     @Override
