@@ -1,5 +1,7 @@
 package fun.medrec.spring.utils;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.optimaize.langdetect.DetectedLanguage;
 import com.optimaize.langdetect.LanguageDetector;
 import com.optimaize.langdetect.LanguageDetectorBuilder;
@@ -9,6 +11,7 @@ import com.optimaize.langdetect.profiles.LanguageProfileReader;
 import com.optimaize.langdetect.text.CommonTextObjectFactories;
 import com.optimaize.langdetect.text.TextObject;
 import com.optimaize.langdetect.text.TextObjectFactory;
+import fun.medrec.spring.domain.bo.TextSegment;
 import fun.medrec.spring.exception.BusinessException;
 import lombok.Data;
 import lombok.Getter;
@@ -26,6 +29,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 public final class TextUtil {
@@ -119,7 +124,6 @@ public final class TextUtil {
             }
         }
 
-        String combinedText = sb.toString();
 
         TextObjectFactory textObjectFactory = CommonTextObjectFactories.forDetectingOnLargeText();
         TextObject textObject = textObjectFactory.forText(sb);
@@ -136,7 +140,7 @@ public final class TextUtil {
     }
 
     //分割句子
-    public static String[] splitSentence(String text, String  language) {
+    public static String[] splitSentence(String text, String language) {
         if ("zh".equals(language)) {
             return text.replaceAll("\\s", "").split("[。！？]");
         } else if ("en".equals(language)) {
@@ -145,8 +149,6 @@ public final class TextUtil {
             return text.split("[.!?]");
         }
     }
-
-
 
     public static TextData readPdf(InputStream inputStream, String fileName) {
         try {
@@ -209,10 +211,10 @@ public final class TextUtil {
     }
 
     public static TextData readPdf(String pdfPath) {
-        try( FileInputStream inputStream = new FileInputStream(pdfPath)) {
+        try (FileInputStream inputStream = new FileInputStream(pdfPath)) {
             String fileName = new File(pdfPath).getName();
             return readPdf(inputStream, fileName);
-        }  catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -232,5 +234,101 @@ public final class TextUtil {
         return documents;
     }
 
+    // 构建文本字符串
+    private static String textSegmentToStr(TextSegment textSegment) {
+        Map<String, String> filteredMetadata = textSegment.getMetadata()
+                .entrySet()
+                .stream()
+                .filter(entry -> !"page".equalsIgnoreCase(entry.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        return JSON.toJSONString(filteredMetadata, SerializerFeature.PrettyFormat) +
+                "\n" + textSegment.getContent();
+    }
 
-}
+    // 总结文本
+    public static List<TextSegment> summarizer(List<TextSegment> textSegments, Integer n) {
+        List<String> stringWithMetaData = textSegments.stream()
+                .map(TextUtil::textSegmentToStr)
+                .toList();
+        int length = textSegments.size();
+
+        // 使用线程安全的列表存储结果
+        List<TextSegment> result = new CopyOnWriteArrayList<>(textSegments);
+
+        // 创建线程池，建议根据CPU核心数设置
+        int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), length);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        for (int i = 0; i < length; i++) {
+            final int index = i;
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    String text = stringWithMetaData.get(index);
+                    StringBuilder contextBeforeBuilder = new StringBuilder();
+                    StringBuilder contextAfterBuilder = new StringBuilder();
+
+                    // 构建上文
+                    for (int j = index - n; j < index; j++) {
+                        if (j >= 0) {
+                            contextBeforeBuilder.append("上文").append(n - (index - j) + 1).append(":");
+                            contextBeforeBuilder.append(stringWithMetaData.get(j));
+                        }
+                    }
+
+                    // 构建下文
+                    for (int j = index + 1; j < index + n + 1; j++) {
+                        if (j < length) {
+                            contextAfterBuilder.append("下文").append(j - index).append(":");
+                            contextAfterBuilder.append(stringWithMetaData.get(j));
+                        }
+                    }
+
+                    if (contextAfterBuilder.isEmpty()) {
+                        contextAfterBuilder.append("无");
+                    }
+                    if (contextBeforeBuilder.isEmpty()) {
+                        contextBeforeBuilder.append("无");
+                    }
+
+                    String contextBefore = contextBeforeBuilder.toString();
+                    String contextAfter = contextAfterBuilder.toString();
+
+                    // 调用AI总结（假设ModelUtil.summarizer是线程安全的）
+                    String summarizer = ModelUtil.summarizer(text, contextBefore, contextAfter);
+
+                    // 日志记录（使用同步块或日志框架本身是线程安全的）
+                    synchronized (System.out) {
+                        log.info("ai总结段落：{}-{}", length, index);
+                    }
+
+                    // 更新结果（CopyOnWriteArrayList保证线程安全）
+                    result.get(index).setSummary(summarizer);
+
+                } catch (Exception e) {
+                    log.error("处理第 {} 个片段失败: {}", index, e.getMessage(), e);
+                    // 可以设置默认值或标记失败
+                    result.get(index).setSummary("总结失败: " + e.getMessage());
+                }
+            }, executor);
+
+            futures.add(future);
+        }
+
+        // 等待所有任务完成
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        return result;
+    }}
