@@ -2,6 +2,7 @@ package fun.medrec.spring.Ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import fun.medrec.spring.domain.bo.TextSegment;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.AllArgsConstructor;
@@ -129,12 +130,42 @@ public class MyVectorStore {
                         "16".getBytes(),
                         "EF_CONSTRUCTION".getBytes(),
                         "200".getBytes(),
-                        "$.id".getBytes(),
+
+                        // bookId
+                        "$.bookId".getBytes(),
                         "AS".getBytes(),
-                        "id".getBytes(),
+                        "bookId".getBytes(),
                         "TAG".getBytes(),
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
+
+                        // page
+                        "$.page".getBytes(),
+                        "AS".getBytes(),
+                        "page".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
+
+                        // index
+                        "$.index".getBytes(),
+                        "AS".getBytes(),
+                        "index".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
+
+                        // text
+                        "$.text".getBytes(),
+                        "AS".getBytes(),
+                        "text".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
+
+
+
+
                 };   // 发送命令
                 return connection.execute("FT.CREATE", args);
             });
@@ -145,13 +176,12 @@ public class MyVectorStore {
     }
 
     // 创建文本转换成向量
-    private List<float[]> embed(TextUtil.TextData textData, EmbeddingModel embeddingModel) {
-        List<String> pageContents = textData.getTexts();
+    private List<float[]> embed(List<String> texts, EmbeddingModel embeddingModel) {
 
         // 合并
-        float[][] embeddingsArray = new float[pageContents.size()][];
+        float[][] embeddingsArray = new float[texts.size()][];
 
-        int len = pageContents.size();
+        int len = texts.size();
         int batch = 10;
         int last = len % batch;
         int n = len / batch + (last == 0 ? 0 : 1);
@@ -163,7 +193,7 @@ public class MyVectorStore {
 
             int start = i * batch;
             int end = (last != 0 && i == n - 1) ? i * batch + last : (i + 1) * batch;
-            List<String> batchList = pageContents.subList(start, end);
+            List<String> batchList = texts.subList(start, end);
 
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 List<float[]> embed = embeddingModel.embed(batchList);
@@ -255,6 +285,12 @@ public class MyVectorStore {
         this.redisVectorStore = RedisVectorStore.builder(jedisPooled, embeddingModel)
                 .indexName(indexName)
                 .prefix(prefix)
+                .metadataFields(
+                        RedisVectorStore.MetadataField.tag("bookId"),
+                        RedisVectorStore.MetadataField.tag("page"),
+                        RedisVectorStore.MetadataField.tag("index"),
+                        RedisVectorStore.MetadataField.tag("text")
+                )
                 .initializeSchema(true)
                 .build();
         this.embeddingModel = embeddingModel;
@@ -266,7 +302,7 @@ public class MyVectorStore {
     public TextUtil.TextData mergeSentence(TextUtil.TextData textData) {
         EmbeddingModel em = this.embeddingModel;
 
-        List<float[]> embeddings = embed(textData, em);
+        List<float[]> embeddings = embed(textData.getTexts(), em);
 
         List<Boolean> cosIfCombine = getSimilarityArray(embeddings);
 
@@ -293,6 +329,7 @@ public class MyVectorStore {
 
     // 查找相似度
     public List<Document> similaritySearch(org.springframework.ai.vectorstore.SearchRequest request) {
+
         return redisVectorStore.similaritySearch(request);
     }
 
@@ -335,7 +372,7 @@ public class MyVectorStore {
         int cycle = n / 10 + 1;
         Filter.Expression expression = new Filter.Expression(
                 Filter.ExpressionType.EQ,
-                new Filter.Key("id"),
+                new Filter.Key("bookId"),
                 new Filter.Value(id + "")
         );
         for (int i = 0; i < cycle; i++) {
@@ -348,4 +385,64 @@ public class MyVectorStore {
         deleteIndex();
         clear();
     }
+
+    // 构建层
+    private List<TextSegment>  buildLayer(List<TextSegment> textSegments, List<float[]> embeddings, double similarityThreshold, int index) {
+        List<TextSegment> out = new ArrayList<>();
+        // 判断是否已经添加到树中,默认False
+        List<Boolean> isAdd = new ArrayList<>(Collections.nCopies(textSegments.size(), false));
+
+        int length = textSegments.size();
+        for (int i = 0; i < length; i++) {
+            if (isAdd.get(i)) {
+                continue;
+            }
+            TextSegment textSegment = new TextSegment();
+            textSegment.setIndex( index);
+            index++;
+            textSegment.getChildren().add(textSegments.get(i));
+            for (int j = i + 1; j < length; j++) {
+                if (isAdd.get(j)) {
+                    continue;
+                }
+                double similarity = cos(embeddings.get(i), embeddings.get(j));
+                if (similarity > similarityThreshold) {
+                    textSegment.getChildren().add(textSegments.get(j));
+                    isAdd.set(j, true);
+                }
+            }
+            out.add(textSegment);
+        }
+        return out;
+    }
+
+    // 构建知识树
+    public TextSegment buildTree(List<TextSegment> textSegments) {
+        double similarityThreshold = 0.8;
+        int i = 0;
+        int index = textSegments.size();
+        while (textSegments.size() > 1) {
+            log.info("构建树:{}", i);
+            log.info("长度:{}", textSegments.size());
+            List<String> text = textSegments.stream()
+                    .map(TextSegment::getSummary)
+                    .toList();
+
+            log.info("向量化");
+            List<float[]> embeddings = embed(text, embeddingModel);
+
+            log.info("开始构建树");
+            textSegments = buildLayer(textSegments, embeddings, similarityThreshold, index);
+
+            log.info("生成总结文本");
+            textSegments = TextUtil.batchAggregateSummaries(textSegments);
+
+            similarityThreshold -= 0.2;
+            i++;
+            index += textSegments.size();
+        }
+        return textSegments.getFirst();
+
+    }
+
 }
