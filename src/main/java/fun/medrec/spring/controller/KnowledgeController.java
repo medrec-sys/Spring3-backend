@@ -6,7 +6,6 @@ import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Knowledge;
 import fun.medrec.spring.service.KnowledgeService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,8 +14,11 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class KnowledgeController {
 
-    @Autowired
-    private KnowledgeService knowledgeService;
+    private final KnowledgeService knowledgeService;
+
+    public KnowledgeController(KnowledgeService knowledgeService) {
+        this.knowledgeService = knowledgeService;
+    }
 
     @PostMapping("/list")
     public Result<PageVO<Knowledge>> getPage(@RequestBody PageDTO<Knowledge> page) {

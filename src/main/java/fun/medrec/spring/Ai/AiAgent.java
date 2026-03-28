@@ -78,8 +78,8 @@ public class AiAgent {
 			""";
 
     private ChatClient client;
-    private Agent agent;
-    private List<MyVectorStore> stores = new ArrayList<>();
+    private final Agent agent;
+    private final List<MyVectorStore> stores = new ArrayList<>();
     @Getter
     @Setter
     private List<Document> documents = new ArrayList<>();

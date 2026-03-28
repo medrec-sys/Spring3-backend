@@ -16,7 +16,6 @@ import fun.medrec.spring.mapper.AgentMapper;
 import fun.medrec.spring.mapper.AgentVectorMapper;
 import fun.medrec.spring.service.AgentService;
 import fun.medrec.spring.service.VectorService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,14 +23,19 @@ import java.util.List;
 
 @Service
 public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements AgentService {
-    @Autowired
-    private AgentMapper agentMapper;
+    private final AgentMapper agentMapper;
 
-    @Autowired
+    final
     AgentVectorMapper agentVectorMapper;
 
-    @Autowired
+    final
     VectorService vectorService;
+
+    public AgentServiceImpl(AgentMapper agentMapper, AgentVectorMapper agentVectorMapper, VectorService vectorService) {
+        this.agentMapper = agentMapper;
+        this.agentVectorMapper = agentVectorMapper;
+        this.vectorService = vectorService;
+    }
 
     @Override
     public PageVO<Agent> getPage(PageDTO<Agent> page) {

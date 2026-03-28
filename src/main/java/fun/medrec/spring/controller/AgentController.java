@@ -6,15 +6,17 @@ import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.service.AgentService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/agent")
 @Slf4j
 public class AgentController {
-    @Autowired
-    private AgentService agentService;
+    private final AgentService agentService;
+
+    public AgentController(AgentService agentService) {
+        this.agentService = agentService;
+    }
 
     @PostMapping("/list")
     public Result<PageVO<Agent>> getPage(@RequestBody PageDTO<Agent> page) {

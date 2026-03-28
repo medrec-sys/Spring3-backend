@@ -10,7 +10,6 @@ import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.VectorMapper;
 import fun.medrec.spring.service.KnowledgeService;
 import fun.medrec.spring.service.VectorService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,11 +18,14 @@ import java.util.List;
 
 @Service
 public class VectorServiceImpl extends ServiceImpl<VectorMapper, Vector> implements VectorService {
-    @Autowired
-    private VectorMapper vectorMapper;
+    private final VectorMapper vectorMapper;
 
-    @Autowired
-    private KnowledgeService knowledgeService;
+    private final KnowledgeService knowledgeService;
+
+    public VectorServiceImpl(VectorMapper vectorMapper, KnowledgeService knowledgeService) {
+        this.vectorMapper = vectorMapper;
+        this.knowledgeService = knowledgeService;
+    }
 
     @Override
     public PageVO<Vector> getPage(PageDTO<Vector> page) {

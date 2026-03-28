@@ -8,6 +8,6 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class PageVO<T> {
-    private long total = 0;
-    private List<T> rows = null;
+    private long total;
+    private List<T> rows;
 }

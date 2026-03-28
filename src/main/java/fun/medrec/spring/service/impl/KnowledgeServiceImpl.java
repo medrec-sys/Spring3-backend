@@ -5,21 +5,23 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.j256.simplemagic.ContentType;
 import fun.medrec.spring.Ai.MyVectorStore;
+import fun.medrec.spring.domain.bo.TextSegment;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
+import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Knowledge;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.exception.BusinessException;
 import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.KnowledgeMapper;
 import fun.medrec.spring.mapper.VectorMapper;
+import fun.medrec.spring.service.HttpService;
 import fun.medrec.spring.service.KnowledgeService;
 import fun.medrec.spring.utils.MinioUtil;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -29,10 +31,18 @@ import java.util.List;
 @Service
 @Slf4j
 public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge> implements KnowledgeService {
-    @Autowired
+    final
     KnowledgeMapper knowledgeMapper;
-    @Autowired
+    final
     VectorMapper vectorMapper;
+    final
+    HttpService httpService;
+
+    public KnowledgeServiceImpl(KnowledgeMapper knowledgeMapper, HttpService httpService, VectorMapper vectorMapper) {
+        this.knowledgeMapper = knowledgeMapper;
+        this.httpService = httpService;
+        this.vectorMapper = vectorMapper;
+    }
 
     @Override
     public PageVO<Knowledge> getPage(PageDTO<Knowledge> page) {
@@ -41,9 +51,7 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         LambdaQueryWrapper<Knowledge> queryWrapper = new LambdaQueryWrapper<>();
 
         Page<Knowledge> result = knowledgeMapper.selectPage(knowlePage, queryWrapper);
-        result.getRecords().forEach(knowledge -> {
-            knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath()));
-        });
+        result.getRecords().forEach(knowledge -> knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath())));
         return new PageVO<>(result.getTotal(), result.getRecords());
     }
 
@@ -70,23 +78,21 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         String name = multipartFile.getOriginalFilename();
         String path = userId + "/" + vectorId + "/" +  System.currentTimeMillis() + "." + fileExtension;
 
-        TextUtil.TextData textData = TextUtil.readPdf(multipartFile.getInputStream(), name);
-        textData = store.mergeSentence(textData);
+        Result<List<TextSegment>> listResult = httpService.fileToMd(multipartFile);
+        List<TextSegment> summarizer = TextUtil.summarizer(listResult.getData(), 1);
+        TextSegment tree = store.buildTree(summarizer);
 
         Knowledge knowledge = new Knowledge();
         knowledge.setName(name);
         knowledge.setPath(path);
         knowledge.setVectorId(vectorId);
-        knowledge.setChunk(textData.getIndexes().size());
+        knowledge.setChunk(tree.getNodeNum());
         knowledge.setCreateBy(userId);
         knowledgeMapper.insert(knowledge);
         MinioUtil.loadFile(multipartFile, path);
 
-        textData.setId(knowledge.getId());
-        List<Document> documents = TextUtil.TextToDocument(textData);
+        List<Document> documents = TextUtil.TextToDocuments(tree, knowledge.getId());
         store.addDocuments(documents);
-
-
 
         return knowledge.getId();
     }

@@ -15,4 +15,7 @@ public class TextSegment {
 
     private List<TextSegment> children = new ArrayList<>();
 
+    public Integer getNodeNum() {
+        return children.stream().mapToInt(TextSegment::getNodeNum).sum() + 1;
+    }
 }

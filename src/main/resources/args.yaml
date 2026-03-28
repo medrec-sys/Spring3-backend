@@ -24,3 +24,6 @@ minio:
   access-key: minioadmin  # 访问密钥（默认 minioadmin）
   secret-key: minioadmin  # 密钥（默认 minioadmin）
   bucket: medrec
+
+webclient:
+  fastApi: http://md-web:8080

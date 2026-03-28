@@ -267,47 +267,7 @@ public class MyVectorStore {
         return result;
     }
 
-    // 求相似度数组
-    private List<Boolean> getSimilarityArray(List<float[]> embeddings) {
-        List<Boolean> cosIfCombine = new ArrayList<>();
-
-        for (int i = 0; i < embeddings.size() - 1; i++) {
-            float[] embedding = embeddings.get(i);
-            float[] embedding2 = embeddings.get(i + 1);
-            double cos = cos(embedding, embedding2);
-            cosIfCombine.add(cos >= SIMILARITY_THRESHOLD);
-        }
-
-        return cosIfCombine;
-    }
-
-    // 句子合并
-    private TextUtil.TextData merge(TextUtil.TextData textData, List<Boolean> cosIfCombine) {
-        List<String> pageContents = textData.getTexts();
-        List<Integer> pageNumbers = textData.getIndexes();
-
-        List<String> sentences = new ArrayList<>();
-        StringBuilder sentence = new StringBuilder(pageContents.getFirst());
-        Integer pageNum = pageNumbers.getFirst();
-        List<Integer> pageNums = new ArrayList<>();
-        for (int i = 0; i < cosIfCombine.size() - 1; i++) {
-            if (cosIfCombine.get(i) && sentence.length() + pageContents.get(i + 1).length() < MAX_LENGTH) {
-                sentence.append(pageContents.get(i + 1));
-            } else {
-                sentences.add(sentence.toString());
-                pageNums.add(pageNum);
-                pageNum = pageNumbers.get(i + 1);
-                sentence = new StringBuilder(pageContents.get(i + 1));
-            }
-        }
-
-        sentences.add(sentence.toString());
-        pageNums.add(pageNum);
-
-        return new TextUtil.TextData(textData.getFileName(), sentences, pageNums);
-    }
-
-    // 直接计算，避免ND4j开销
+    //  计算余弦相似度
     private double cos(float[] a, float[] b) {
         double dot = 0, normA = 0, normB = 0;
         for (int i = 0; i < a.length; i++) {
@@ -347,19 +307,8 @@ public class MyVectorStore {
                 .initializeSchema(true)
                 .build();
         this.embeddingModel = embeddingModel;
-        log.info("加载向量库:" + vector.getId());
+        log.info("加载向量库:{}", vector.getId());
         MyVectorStore.storeCache.put(vector.getId(), this);
-    }
-
-    // 根据语义合并句子
-    public TextUtil.TextData mergeSentence(TextUtil.TextData textData) {
-        EmbeddingModel em = this.embeddingModel;
-
-        List<float[]> embeddings = embed(textData.getTexts(), em);
-
-        List<Boolean> cosIfCombine = getSimilarityArray(embeddings);
-
-        return merge(textData, cosIfCombine);
     }
 
     // 添加文档到vectorStore
@@ -479,13 +428,12 @@ public class MyVectorStore {
                 }
             }
         }
-        List<Document> list = out.stream().map(document -> {
+        return out.stream().map(document -> {
             Map<String, Object> metadata = document.getMetadata();
             String text = (String) metadata.get("text");
             metadata.put("text", document.getText());
             return new Document(text, metadata);
         }).toList();
-        return list;
     }
 
     // 清空知识库

@@ -6,7 +6,6 @@ import fun.medrec.spring.utils.ModelUtil;
 import io.minio.MinioClient;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,10 +50,14 @@ public class Initializer {
     @Value("${minio.bucket}")
     private String bucket;
 
-    @Autowired
+    final
     StringRedisTemplate stringRedisTemplate;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
+
+    public Initializer(StringRedisTemplate stringRedisTemplate, JdbcTemplate jdbcTemplate) {
+        this.stringRedisTemplate = stringRedisTemplate;
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     @PostConstruct
     public void initAiUtil() {

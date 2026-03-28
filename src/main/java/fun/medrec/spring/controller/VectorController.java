@@ -6,7 +6,6 @@ import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.service.VectorService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -14,8 +13,11 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 public class VectorController {
 
-    @Autowired
-    private VectorService vectorService;
+    private final VectorService vectorService;
+
+    public VectorController(VectorService vectorService) {
+        this.vectorService = vectorService;
+    }
 
     @PostMapping("/list")
     public Result<PageVO<Vector>> getPage(@RequestBody PageDTO<Vector> page) {

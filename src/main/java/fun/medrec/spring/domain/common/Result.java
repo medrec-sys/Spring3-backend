@@ -20,7 +20,7 @@ public class Result<T> {
         return new Result<>(1, "success", data);
     }
 
-    public static Result<Void> error(String message) {
+    public static <T> Result<T> error(String message) {
         return new Result<>(-1, message, null);
     }
 }
