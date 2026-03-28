@@ -4,35 +4,35 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
-import org.springframework.ai.rag.retrieval.search.VectorStoreDocumentRetriever;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 public final class MultiVectorStoreDocumentRetriever implements DocumentRetriever {
-    private final List<VectorStoreDocumentRetriever> retrievers;
+    private final List<MyVectorStore> vectorStores;
+    private final SearchRequest searchRequest;
 
-    public MultiVectorStoreDocumentRetriever(List<VectorStore> vectorStores, @Nullable Double similarityThreshold,
-                                             Integer topK, @Nullable Supplier<Filter.Expression> filterExpression) {
-        this.retrievers = vectorStores.stream().map(vectorStore -> VectorStoreDocumentRetriever.builder()
-                .vectorStore(vectorStore)
-                .similarityThreshold(similarityThreshold != null ? similarityThreshold
-                        : SearchRequest.SIMILARITY_THRESHOLD_ACCEPT_ALL)
+    public MultiVectorStoreDocumentRetriever(List<MyVectorStore> vectorStores, @Nullable Double similarityThreshold,
+                                             Integer topK) {
+        this.vectorStores = vectorStores;
+        this.searchRequest = SearchRequest.builder()
                 .topK(topK)
-                .filterExpression(filterExpression != null ? filterExpression : () -> null)
-                .build()).toList();
+                .similarityThreshold(similarityThreshold == null ? 0.7 : similarityThreshold)
+                .build();
     }
+
+
 
     @NotNull
     @Override
     public List<Document> retrieve(@NotNull Query query) {
         Assert.notNull(query, "query cannot be null");
-        return retrievers.stream().map(retriever -> retriever.retrieve(query)).flatMap(List::stream)
+        SearchRequest newRequest = SearchRequest.from(searchRequest)
+                .query(query.text())
+                .build();
+        return vectorStores.stream().map(vectorStores -> vectorStores.similaritySearch(newRequest)).flatMap(List::stream)
                 .toList();
     }
 
@@ -42,18 +42,16 @@ public final class MultiVectorStoreDocumentRetriever implements DocumentRetrieve
 
     public static final class Builder {
 
-        private List<VectorStore> vectorStores;
+        private List<MyVectorStore> vectorStores;
 
         private Double similarityThreshold;
 
         private Integer topK;
 
-        private Supplier<Filter.Expression> filterExpression;
-
         private Builder() {
         }
 
-        public MultiVectorStoreDocumentRetriever.Builder vectorStores(List<VectorStore> vectorStores) {
+        public MultiVectorStoreDocumentRetriever.Builder vectorStores(List<MyVectorStore> vectorStores) {
             this.vectorStores = vectorStores;
             return this;
         }
@@ -68,19 +66,8 @@ public final class MultiVectorStoreDocumentRetriever implements DocumentRetrieve
             return this;
         }
 
-        public MultiVectorStoreDocumentRetriever.Builder filterExpression(Filter.Expression filterExpression) {
-            this.filterExpression = () -> filterExpression;
-            return this;
-        }
-
-        public MultiVectorStoreDocumentRetriever.Builder filterExpression(Supplier<Filter.Expression> filterExpression) {
-            this.filterExpression = filterExpression;
-            return this;
-        }
-
         public MultiVectorStoreDocumentRetriever build() {
-            return new MultiVectorStoreDocumentRetriever(this.vectorStores, this.similarityThreshold, this.topK,
-                    this.filterExpression);
+            return new MultiVectorStoreDocumentRetriever(this.vectorStores, this.similarityThreshold, this.topK);
         }
 
     }

@@ -1,39 +1,56 @@
 package fun.medrec.spring.Ai;
 
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.AdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.BaseAdvisor;
 import org.springframework.ai.document.Document;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor.RETRIEVED_DOCUMENTS;
+import static org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor.DOCUMENT_CONTEXT;
 
+@Slf4j
 public class DocumentAdvisor implements BaseAdvisor {
-    private List<Document> documents;
+    private final AiAgent aiAgent;
 
-    public DocumentAdvisor(List<Document> documents) {
-        this.documents = documents;
+    public DocumentAdvisor(AiAgent aiAgent) {
+        this.aiAgent = aiAgent;
     }
 
 
+    @NotNull
     @Override
     public String getName() {
         return "DocumentAdvisor";
     }
 
+    @NotNull
     @Override
-    public ChatClientRequest before(ChatClientRequest chatClientRequest, AdvisorChain advisorChain) {
+    public ChatClientRequest before(ChatClientRequest chatClientRequest, @NotNull AdvisorChain advisorChain) {
         Map<String, Object> context = chatClientRequest.context();
-        this.documents  = (List<Document>)context.get(RETRIEVED_DOCUMENTS);
+        Object o = context.get(DOCUMENT_CONTEXT);
+        List<Document> documents;
+        if (o instanceof List<?>) {
+            documents = ((List<?>) o).stream()
+                    .filter(Document.class::isInstance)
+                    .map(Document.class::cast)
+                    .toList();
+        } else {
+            documents = Collections.emptyList();
+        }        this.aiAgent.setDocuments(documents);
 
+        log.info("DocumentAdvisor: {}", documents);
         return chatClientRequest;
     }
 
+    @NotNull
     @Override
-    public ChatClientResponse after(ChatClientResponse chatClientResponse, AdvisorChain advisorChain) {
+    public ChatClientResponse after(@NotNull ChatClientResponse chatClientResponse, @NotNull AdvisorChain advisorChain) {
         return chatClientResponse;
     }
 

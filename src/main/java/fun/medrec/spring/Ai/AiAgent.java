@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Agent;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -23,14 +24,12 @@ import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugment
 import org.springframework.ai.rag.preretrieval.query.transformation.CompressionQueryTransformer;
 import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
 import org.springframework.ai.template.st.StTemplateRenderer;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Slf4j
 public class AiAgent {
@@ -81,6 +80,8 @@ public class AiAgent {
     private ChatClient client;
     private Agent agent;
     private List<MyVectorStore> stores = new ArrayList<>();
+    @Getter
+    @Setter
     private List<Document> documents = new ArrayList<>();
 
     @Getter
@@ -150,7 +151,7 @@ public class AiAgent {
         );
 
         // 配置文档返回
-        DocumentAdvisor documentAdvisor = new DocumentAdvisor(this.documents);
+        DocumentAdvisor documentAdvisor = new DocumentAdvisor(this);
         builder.defaultAdvisors(documentAdvisor);
 
         // 配置对话重写和历史消息压缩
@@ -171,12 +172,8 @@ public class AiAgent {
                 .promptTemplate(compressionPromptTemplate)
                 .build();
 
-        // 配置文档检索
-        List<VectorStore> vectorStores = stores.stream()
-                .map(MyVectorStore::getRedisVectorStore)  // 方法引用
-                .collect(Collectors.toList());
         MultiVectorStoreDocumentRetriever documentRetriever = MultiVectorStoreDocumentRetriever.builder()
-                .vectorStores(vectorStores)
+                .vectorStores(stores)
                 .topK(agent.getTopK())
                 .similarityThreshold(agent.getSimilarity())
                 .build();

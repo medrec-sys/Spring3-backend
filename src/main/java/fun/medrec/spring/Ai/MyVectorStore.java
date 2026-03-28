@@ -1,5 +1,6 @@
 package fun.medrec.spring.Ai;
 
+import com.alibaba.fastjson.JSON;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.bo.TextSegment;
@@ -9,16 +10,16 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.redis.RedisVectorStore;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.Cursor;
@@ -29,10 +30,7 @@ import redis.clients.jedis.JedisPooled;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Data
 @AllArgsConstructor
@@ -52,6 +50,7 @@ public class MyVectorStore {
 
     @Getter
     private static Cache<Integer, MyVectorStore> storeCache;
+
     public static void init(StringRedisTemplate stringRedisTemplate, JedisPooled jedisPooled, int maxLength, double similarityThreshold, String baseUrl, String apiKey, String embeddingName) {
         MyVectorStore.stringRedisTemplate = stringRedisTemplate;
         MyVectorStore.jedisPooled = jedisPooled;
@@ -147,10 +146,10 @@ public class MyVectorStore {
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
-                        // index
-                        "$.index".getBytes(),
+                        // id
+                        "$.id".getBytes(),
                         "AS".getBytes(),
-                        "index".getBytes(),
+                        "id".getBytes(),
                         "TAG".getBytes(),
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
@@ -163,7 +162,21 @@ public class MyVectorStore {
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
+                        // isRoot
+                        "$.isRoot".getBytes(),
+                        "AS".getBytes(),
+                        "isRoot".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
 
+                        // childrenIds
+                        "$.childrenIds".getBytes(),
+                        "AS".getBytes(),
+                        "childrenIds".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
 
 
                 };   // 发送命令
@@ -177,40 +190,81 @@ public class MyVectorStore {
 
     // 创建文本转换成向量
     private List<float[]> embed(List<String> texts, EmbeddingModel embeddingModel) {
+        int length = texts.size();
 
-        // 合并
-        float[][] embeddingsArray = new float[texts.size()][];
+        // 1. 使用线程安全的列表存储结果
+        List<float[]> result = new CopyOnWriteArrayList<>(new ArrayList<>(Collections.nCopies(length, null)));
 
-        int len = texts.size();
-        int batch = 10;
-        int last = len % batch;
-        int n = len / batch + (last == 0 ? 0 : 1);
-
-        ExecutorService executor = Executors.newFixedThreadPool(15);
+        // 2. 动态计算线程池大小（根据CPU核心数和任务数量）
+        int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), length);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-        for (int i = 0; i < n; i++) {
+        // 3. 批次大小
+        int batchSize = 10;
+        int totalBatches = (length + batchSize - 1) / batchSize;
 
-            int start = i * batch;
-            int end = (last != 0 && i == n - 1) ? i * batch + last : (i + 1) * batch;
-            List<String> batchList = texts.subList(start, end);
+        log.info("开始向量化：总文本数={}, 线程数={}, 批次大小={}, 总批次数={}",
+                length, threadCount, batchSize, totalBatches);
+
+        for (int i = 0; i < totalBatches; i++) {
+            final int start = i * batchSize;
+            final int end = Math.min(start + batchSize, length);
+            final int batchIndex = i;
 
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                List<float[]> embed = embeddingModel.embed(batchList);
-                for (int j = 0; j < embed.size(); j++) {
-                    embeddingsArray[start + j] = embed.get(j);
+                try {
+                    List<String> batchList = texts.subList(start, end);
+
+                    // 执行批量向量化
+                    List<float[]> embeddings = embeddingModel.embed(batchList);
+
+                    // 将结果放入正确的位置
+                    for (int j = 0; j < embeddings.size(); j++) {
+                        result.set(start + j, embeddings.get(j));
+                    }
+
+                    log.info("批次 {}/{} 完成，处理文本 {} 到 {}，共 {} 条",
+                            batchIndex + 1, totalBatches, start + 1, end, embeddings.size());
+
+                } catch (Exception e) {
+                    log.error("批次 {}/{} 处理失败: {}", batchIndex + 1, totalBatches, e.getMessage(), e);
+                    // 设置空数组作为占位符，避免NPE
+                    for (int j = start; j < end; j++) {
+                        result.set(j, new float[0]);
+                    }
                 }
             }, executor);
 
             futures.add(future);
-            log.info(n + ":" + i);
         }
 
+        // 等待所有任务完成
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                    log.warn("线程池未能在60秒内正常关闭，强制终止");
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+                log.error("线程池关闭时被中断", e);
+            }
+        }
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executor.shutdown();
+        // 检查是否有失败的向量化
+        long failedCount = result.stream().filter(arr -> arr == null || arr.length == 0).count();
+        if (failedCount > 0) {
+            log.warn("向量化完成，但有 {} 条文本向量化失败", failedCount);
+        } else {
+            log.info("向量化完成，所有 {} 条文本处理成功", length);
+        }
 
-        return Arrays.asList(embeddingsArray);
+        return result;
     }
 
     // 求相似度数组
@@ -253,17 +307,15 @@ public class MyVectorStore {
         return new TextUtil.TextData(textData.getFileName(), sentences, pageNums);
     }
 
+    // 直接计算，避免ND4j开销
     private double cos(float[] a, float[] b) {
-        INDArray vec1 = Nd4j.create(a);
-        INDArray vec2 = Nd4j.create(b);
-
-        INDArray vec2Column = vec2.reshape(vec2.length(), 1);
-        double dot = vec1.mmul(vec2Column).getDouble(0);
-
-        double norm1 = vec1.norm2Number().doubleValue();
-        double norm2 = vec2.norm2Number().doubleValue();
-
-        return (norm1 * norm2 == 0) ? 0 : (dot / (norm1 * norm2));
+        double dot = 0, normA = 0, normB = 0;
+        for (int i = 0; i < a.length; i++) {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
     // 删除索引
@@ -286,16 +338,17 @@ public class MyVectorStore {
                 .indexName(indexName)
                 .prefix(prefix)
                 .metadataFields(
+                        RedisVectorStore.MetadataField.tag("childrenIds"),
                         RedisVectorStore.MetadataField.tag("bookId"),
                         RedisVectorStore.MetadataField.tag("page"),
-                        RedisVectorStore.MetadataField.tag("index"),
+                        RedisVectorStore.MetadataField.tag("id"),
                         RedisVectorStore.MetadataField.tag("text")
                 )
                 .initializeSchema(true)
                 .build();
         this.embeddingModel = embeddingModel;
         log.info("加载向量库:" + vector.getId());
-        MyVectorStore.storeCache.put(vector.getId(),  this);
+        MyVectorStore.storeCache.put(vector.getId(), this);
     }
 
     // 根据语义合并句子
@@ -311,26 +364,128 @@ public class MyVectorStore {
 
     // 添加文档到vectorStore
     public void addDocuments(List<Document> documents) {
-        VectorStore vectorStore = this.redisVectorStore;
-        // 分批存储
-        int batchSize = 10;
-        int total = documents.size();
-        int n = total / batchSize;
-        int last = total % batchSize;
-        for (int i = 0; i < n; i++) {
-            List<Document> batch = documents.subList(i * batchSize, (i + 1) * batchSize);
-            vectorStore.add(batch);
+        if (documents == null || documents.isEmpty()) {
+            return;
         }
-        if (last > 0) {
-            List<Document> batch = documents.subList(n * batchSize, total);
-            vectorStore.add(batch);
+
+        VectorStore vectorStore = this.redisVectorStore;
+        int total = documents.size();
+        int batchSize = 10;
+
+        // 计算批次数量
+        int batchCount = (total + batchSize - 1) / batchSize;
+
+        // 根据CPU核心数和批次数量设置线程池大小
+        int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), batchCount);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        // 使用线程安全的列表或直接处理
+        List<Document> documentList = new CopyOnWriteArrayList<>(documents);
+
+        for (int i = 0; i < batchCount; i++) {
+            final int batchIndex = i;
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    int start = batchIndex * batchSize;
+                    int end = Math.min(start + batchSize, total);
+                    List<Document> batch = documentList.subList(start, end);
+
+                    // 添加日志记录批次处理
+                    synchronized (System.out) {
+                        log.info("开始处理第 {}/{} 批次，文档数量：{}，范围：[{}-{}]",
+                                batchIndex + 1, batchCount, batch.size(), start, end - 1);
+                    }
+
+                    // 存储批次文档
+                    vectorStore.add(batch);
+
+                    synchronized (System.out) {
+                        log.info("完成处理第 {}/{} 批次，文档数量：{}",
+                                batchIndex + 1, batchCount, batch.size());
+                    }
+
+                } catch (Exception e) {
+                    log.error("处理第 {} 批次失败: {}", batchIndex + 1, e.getMessage(), e);
+                    // 可以选择重试或者记录失败批次
+                    throw new RuntimeException("批次处理失败", e);
+                }
+            }, executor);
+
+            futures.add(future);
+        }
+
+        // 等待所有任务完成
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            log.info("所有批次处理完成，总文档数：{}，总批次数：{}", total, batchCount);
+        } catch (Exception e) {
+            log.error("批量添加文档过程中发生异常", e);
+            throw new RuntimeException("批量添加文档失败", e);
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                    log.warn("线程池未能在60秒内正常关闭，强制关闭");
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+                log.error("线程池关闭时被中断", e);
+            }
         }
     }
 
     // 查找相似度
     public List<Document> similaritySearch(org.springframework.ai.vectorstore.SearchRequest request) {
+        double similarityThreshold = request.getSimilarityThreshold() / 2;
+        double step = similarityThreshold / 5;
 
-        return redisVectorStore.similaritySearch(request);
+        List<Document> out = new ArrayList<>();
+
+        SearchRequest rootRequest = SearchRequest.from(request)
+                .similarityThreshold(similarityThreshold)
+                .filterExpression("isRoot == '1'")
+                .build();
+
+        List<String> id = new ArrayList<>(redisVectorStore.similaritySearch(rootRequest)
+                .stream()
+                .map((doc) -> {
+                    String obj = (String) doc.getMetadata().get("childrenIds");
+                    String[] array = JSON.parseArray(obj, String.class).toArray(new String[0]);
+                    return (List<String>) new ArrayList<>(Arrays.asList(array));
+                }).flatMap(List::stream)
+                .toList());
+
+        while (!id.isEmpty()) {
+            Filter.Expression expression = new FilterExpressionBuilder()
+                    .in("id", id.toArray())
+                    .build();
+
+            similarityThreshold += step;
+            SearchRequest newRequest = SearchRequest.from(request)
+                    .similarityThreshold(similarityThreshold)
+                    .filterExpression(expression)
+                    .build();
+            List<Document> documents = redisVectorStore.similaritySearch(newRequest);
+            id.clear();
+            for (Document document : documents) {
+                String childrenIds = (String) document.getMetadata().get("childrenIds");
+                if (childrenIds != null) {
+                    id.addAll(List.of(JSON.parseArray(childrenIds, String.class).toArray(new String[0])));
+                } else {
+                    out.add(document);
+                }
+            }
+        }
+        List<Document> list = out.stream().map(document -> {
+            Map<String, Object> metadata = document.getMetadata();
+            String text = (String) metadata.get("text");
+            metadata.put("text", document.getText());
+            return new Document(text, metadata);
+        }).toList();
+        return list;
     }
 
     // 清空知识库
@@ -387,7 +542,7 @@ public class MyVectorStore {
     }
 
     // 构建层
-    private List<TextSegment>  buildLayer(List<TextSegment> textSegments, List<float[]> embeddings, double similarityThreshold, int index) {
+    private List<TextSegment> buildLayer(List<TextSegment> textSegments, List<float[]> embeddings, double similarityThreshold, int index) {
         List<TextSegment> out = new ArrayList<>();
         // 判断是否已经添加到树中,默认False
         List<Boolean> isAdd = new ArrayList<>(Collections.nCopies(textSegments.size(), false));
@@ -398,7 +553,7 @@ public class MyVectorStore {
                 continue;
             }
             TextSegment textSegment = new TextSegment();
-            textSegment.setIndex( index);
+            textSegment.setId(index);
             index++;
             textSegment.getChildren().add(textSegments.get(i));
             for (int j = i + 1; j < length; j++) {

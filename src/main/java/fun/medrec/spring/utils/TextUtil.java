@@ -409,13 +409,13 @@ public final class TextUtil {
 
     private static Document TextToDocument(TextSegment textSegment, Integer bookId) {
         String summary = textSegment.getSummary();
-        Integer index = textSegment.getIndex();
-        List<Integer> childrenIds = textSegment.getChildren().stream()
-                .map(TextSegment::getIndex)
+        Integer index = textSegment.getId();
+        List<String> childrenIds = textSegment.getChildren().stream()
+                .map((child) -> (bookId + "_" + child.getId()))
                 .toList();
 
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("index", index + "");
+        metadata.put("id", bookId + "_" + index);
         metadata.put("bookId", bookId + "");
         if (textSegment.getMetadata() != null) {
             String page = textSegment.getMetadata().get("page");
@@ -426,7 +426,8 @@ public final class TextUtil {
         if (!childrenIds.isEmpty()) {
             metadata.put("childrenIds", childrenIds);
         }
-        return new Document(summary, metadata);
+        String docId = bookId + ":" + index;
+        return new Document(docId, summary, metadata);
     }
 
     public static List<Document> TextToDocuments(TextSegment textTree, Integer bookId) {
@@ -439,6 +440,14 @@ public final class TextUtil {
             documents.add(TextToDocument(textSegment, bookId));
             queue.addAll(textSegment.getChildren());
         }
+
+        Document first = documents.getFirst();
+        Map<String, Object> metadata = first.getMetadata();
+        metadata.put("isRoot", "1");
+        documents.set(0,
+                first.mutate()
+                        .metadata(metadata)
+                        .build());
 
         return documents;
     }
