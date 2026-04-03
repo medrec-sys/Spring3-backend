@@ -21,8 +21,8 @@ internet:
 minio:
   clientPoint: http://localhost:8090
   serverPoint: http://md-minio:9000
-  access-key: minioadmin  # 访问密钥（默认 minioadmin）
-  secret-key: minioadmin  # 密钥（默认 minioadmin）
+  accessKey: minioadmin  # 访问密钥（默认 minioadmin）
+  secretKey: minioadmin  # 密钥（默认 minioadmin）
   bucket: medrec
 
 webclient:

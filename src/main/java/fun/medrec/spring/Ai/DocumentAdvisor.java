@@ -44,7 +44,6 @@ public class DocumentAdvisor implements BaseAdvisor {
             documents = Collections.emptyList();
         }        this.aiAgent.setDocuments(documents);
 
-        log.info("DocumentAdvisor: {}", documents);
         return chatClientRequest;
     }
 

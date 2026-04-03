@@ -9,18 +9,24 @@ import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.domain.entity.AgentVector;
+import fun.medrec.spring.domain.entity.Knowledge;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.exception.BusinessException;
 import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.AgentMapper;
 import fun.medrec.spring.mapper.AgentVectorMapper;
+import fun.medrec.spring.mapper.KnowledgeMapper;
 import fun.medrec.spring.service.AgentService;
+import fun.medrec.spring.service.KnowledgeService;
 import fun.medrec.spring.service.VectorService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements AgentService {
     private final AgentMapper agentMapper;
@@ -31,10 +37,13 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements
     final
     VectorService vectorService;
 
-    public AgentServiceImpl(AgentMapper agentMapper, AgentVectorMapper agentVectorMapper, VectorService vectorService) {
+    final KnowledgeService knowledgeService;
+
+    public AgentServiceImpl(AgentMapper agentMapper, AgentVectorMapper agentVectorMapper, VectorService vectorService, KnowledgeService knowledgeService) {
         this.agentMapper = agentMapper;
         this.agentVectorMapper = agentVectorMapper;
         this.vectorService = vectorService;
+        this.knowledgeService = knowledgeService;
     }
 
     @Override
@@ -42,7 +51,8 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements
         Page<Agent> agentPage = new Page<>(page.getPageNum(), page.getPageSize());
 
         LambdaQueryWrapper<Agent> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(Agent::getCreateBy, UserContext.getId());
+        queryWrapper.eq(Agent::getCreateBy, UserContext.getId())
+                .orderByDesc(Agent::getCreateTime);
 
         Page<Agent> result = agentMapper.selectPage(agentPage, queryWrapper);
         return new PageVO<>(result.getTotal(), result.getRecords());
@@ -96,6 +106,31 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements
         agent.setId(null);
         agentMapper.insert(agent);
         return agent.getId();
+    }
+
+    @Override
+    public List<Document> getVectors(AiAgent agent) {
+        List<Document> documents = agent.getDocuments();
+
+        if (documents.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> bookId = documents.stream()
+                .map(document -> Integer.parseInt((String) document.getMetadata().get("bookId")))
+                .distinct()
+                .toList();
+
+        List<Knowledge> knowledges = knowledgeService.getByIds(bookId);
+        for (Document document: documents) {
+            for (Knowledge knowledge: knowledges) {
+                if (knowledge.getId().equals(Integer.parseInt((String) document.getMetadata().get("bookId")))) {
+                    document.getMetadata().put("url", knowledge.getPath());
+                    document.getMetadata().put("name", knowledge.getName());
+                }
+            }
+        }
+
+        return documents;
     }
 
     @Override

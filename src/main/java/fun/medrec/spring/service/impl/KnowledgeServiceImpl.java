@@ -49,6 +49,10 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
         Page<Knowledge> knowlePage = new Page<>(page.getPageNum(), page.getPageSize());
 
         LambdaQueryWrapper<Knowledge> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Knowledge::getVectorId, page.getQuery().getVectorId());
+        if (page.getQuery().getName() != null && !page.getQuery().getName().isEmpty()) {
+            queryWrapper.like(Knowledge::getName, page.getQuery().getName());
+        }
 
         Page<Knowledge> result = knowledgeMapper.selectPage(knowlePage, queryWrapper);
         result.getRecords().forEach(knowledge -> knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath())));
@@ -123,11 +127,22 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
     }
 
     @Override
+    public List<Knowledge> getByIds(List<Integer> ids) {
+        List<Knowledge> knowledges = knowledgeMapper.selectByIds(ids);
+        knowledges.forEach(knowledge -> knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath())));
+        return knowledges;
+    }
+
+
+    @Override
     @Transactional
     public void deleteByVectorId(Integer id) {
         LambdaQueryWrapper<Knowledge> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Knowledge::getVectorId, id);
         List<Knowledge> knowledges = knowledgeMapper.selectList(queryWrapper);
+        if (knowledges.isEmpty()) {
+            return;
+        }
         knowledgeMapper.delete(queryWrapper);
         MyVectorStore store = MyVectorStore.getStore(knowledges.getFirst().getVectorId());
         if (store == null) {
@@ -138,5 +153,14 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
             store.delete(knowledge.getId(), knowledge.getChunk());
             MinioUtil.deleteFile(knowledge.getPath());
         }
+    }
+
+    @Override
+    public List<Knowledge> getByVectorId(Integer id) {
+        LambdaQueryWrapper<Knowledge> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Knowledge::getVectorId, id);
+        List<Knowledge> knowledges = knowledgeMapper.selectList(queryWrapper);
+        knowledges.forEach(knowledge -> knowledge.setPath(MinioUtil.getFileUrl(knowledge.getPath())));
+        return knowledges;
     }
 }

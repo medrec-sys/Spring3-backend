@@ -6,6 +6,8 @@ import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Knowledge;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 public interface KnowledgeService extends IService<Knowledge> {
     PageVO<Knowledge> getPage(PageDTO<Knowledge> page);
 
@@ -15,5 +17,9 @@ public interface KnowledgeService extends IService<Knowledge> {
 
     Knowledge getById(Integer id);
 
+    List< Knowledge> getByIds(List<Integer> ids);
+
     void deleteByVectorId(Integer id);
+
+    List<Knowledge> getByVectorId(Integer id);
 }

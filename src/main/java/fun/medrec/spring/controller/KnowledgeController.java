@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/knowledge")
 @Slf4j
@@ -39,11 +41,16 @@ public class KnowledgeController {
 
     @PostMapping("/{vectorId}")
     public Result<Integer> add(@RequestParam MultipartFile file, @PathVariable Integer vectorId) {
-        return  Result.success(knowledgeService.save(file, vectorId));
+        return Result.success(knowledgeService.save(file, vectorId));
     }
 
     @PutMapping
     public Result<Void> update(@RequestBody Knowledge knowledge) {
         return knowledgeService.updateById(knowledge) ? Result.success() : Result.error("更新失败");
+    }
+
+    @GetMapping("/vector/{id}")
+    public Result<List<Knowledge>> getByVectorId(@PathVariable Integer id) {
+        return Result.success(knowledgeService.getByVectorId(id));
     }
 }

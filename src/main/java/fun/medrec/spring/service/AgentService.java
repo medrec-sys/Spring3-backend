@@ -5,6 +5,9 @@ import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.entity.Agent;
+import org.springframework.ai.document.Document;
+
+import java.util.List;
 
 public interface AgentService extends IService<Agent> {
     PageVO<Agent> getPage(PageDTO<Agent> page);
@@ -18,4 +21,6 @@ public interface AgentService extends IService<Agent> {
     AiAgent reBuildAgent(Integer id);
 
     Integer create(Agent agent);
+
+    List<Document> getVectors(AiAgent agent);
 }

@@ -3,6 +3,7 @@ package fun.medrec.spring.Ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Agent;
+import fun.medrec.spring.domain.entity.Chat;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugment
 import org.springframework.ai.rag.preretrieval.query.transformation.CompressionQueryTransformer;
 import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
 import org.springframework.ai.template.st.StTemplateRenderer;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import reactor.core.publisher.Flux;
 
@@ -217,6 +219,12 @@ public class AiAgent {
 
     }
 
+    public List<Chat> getHistory(Integer id) {
+        String sql = "SELECT * FROM SPRING_AI_CHAT_MEMORY WHERE conversation_id = ?";
+
+        return jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Chat.class), id);
+    }
+
     public void addVectorStore(MyVectorStore vectorStore) {
         stores.add(vectorStore);
         reBuild(this);
@@ -226,4 +234,6 @@ public class AiAgent {
         stores.removeIf(store -> store.getVector().getId() == id);
         reBuild(this);
     }
+
+
 }
