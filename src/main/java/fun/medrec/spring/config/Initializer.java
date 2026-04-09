@@ -25,10 +25,6 @@ public class Initializer {
     @Value("${spring.data.redis.password}")
     private String password;
 
-    @Value("${spring.ai.openai.embedding.options.max-length}")
-    private int maxLength;
-    @Value("${spring.ai.openai.embedding.options.similarity}")
-    private double similarity;
     @Value("${spring.ai.openai.base-url}")
     private String baseUrl;
     @Value("${spring.ai.openai.api-key}")
@@ -62,7 +58,7 @@ public class Initializer {
     @PostConstruct
     public void initAiUtil() {
         JedisPooled jedisPooled = new JedisPooled(host, port, username, password);
-        MyVectorStore.init(stringRedisTemplate, jedisPooled, maxLength, similarity, baseUrl, apiKey, model);
+        MyVectorStore.init(stringRedisTemplate, jedisPooled, baseUrl, apiKey, model);
 
         AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel);
         ModelUtil.init(baseUrl, apiKey, chatModel);

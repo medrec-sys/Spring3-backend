@@ -11,6 +11,7 @@ import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.client.WebClient;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.time.Duration;
 import java.util.List;
@@ -46,7 +47,8 @@ public class HttpServiceImpl implements HttpService {
                     .timeout(TIMEOUT)
                     .block();
 
-            return HttpUtil.parseResponseBody(response);
+            return HttpUtil.parseResponseBody(response, new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.error("发送文件内容失败: {}", argsConfig.fastApiUrl, e);
             return Result.error(e.getMessage());

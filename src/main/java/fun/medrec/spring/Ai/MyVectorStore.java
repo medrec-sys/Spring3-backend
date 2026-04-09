@@ -1,11 +1,8 @@
 package fun.medrec.spring.Ai;
 
-import com.alibaba.fastjson.JSON;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import fun.medrec.spring.domain.bo.TextSegment;
 import fun.medrec.spring.domain.entity.Vector;
-import fun.medrec.spring.utils.TextUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
@@ -16,10 +13,8 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
-import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.redis.RedisVectorStore;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.Cursor;
@@ -40,8 +35,6 @@ public class MyVectorStore {
     private RedisVectorStore redisVectorStore;
     private Vector vector;
 
-    private static int MAX_LENGTH;
-    private static double SIMILARITY_THRESHOLD;
     private static JedisPooled jedisPooled;
     private static String apiKey;
     private static String baseUrl;
@@ -51,11 +44,9 @@ public class MyVectorStore {
     @Getter
     private static Cache<Integer, MyVectorStore> storeCache;
 
-    public static void init(StringRedisTemplate stringRedisTemplate, JedisPooled jedisPooled, int maxLength, double similarityThreshold, String baseUrl, String apiKey, String embeddingName) {
+    public static void init(StringRedisTemplate stringRedisTemplate, JedisPooled jedisPooled, String baseUrl, String apiKey, String embeddingName) {
         MyVectorStore.stringRedisTemplate = stringRedisTemplate;
         MyVectorStore.jedisPooled = jedisPooled;
-        MyVectorStore.MAX_LENGTH = maxLength;
-        MyVectorStore.SIMILARITY_THRESHOLD = similarityThreshold;
         MyVectorStore.apiKey = apiKey;
         MyVectorStore.baseUrl = baseUrl;
         MyVectorStore.embeddingName = embeddingName;
@@ -170,15 +161,6 @@ public class MyVectorStore {
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
-                        // childrenIds
-                        "$.childrenIds".getBytes(),
-                        "AS".getBytes(),
-                        "childrenIds".getBytes(),
-                        "TAG".getBytes(),
-                        "SEPARATOR".getBytes(),
-                        ",".getBytes(),
-
-
                 };   // 发送命令
                 return connection.execute("FT.CREATE", args);
             });
@@ -186,96 +168,6 @@ public class MyVectorStore {
         }
 
 
-    }
-
-    // 创建文本转换成向量
-    private List<float[]> embed(List<String> texts, EmbeddingModel embeddingModel) {
-        int length = texts.size();
-
-        // 1. 使用线程安全的列表存储结果
-        List<float[]> result = new CopyOnWriteArrayList<>(new ArrayList<>(Collections.nCopies(length, null)));
-
-        // 2. 动态计算线程池大小（根据CPU核心数和任务数量）
-        int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), length);
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        // 3. 批次大小
-        int batchSize = 10;
-        int totalBatches = (length + batchSize - 1) / batchSize;
-
-        log.info("开始向量化：总文本数={}, 线程数={}, 批次大小={}, 总批次数={}",
-                length, threadCount, batchSize, totalBatches);
-
-        for (int i = 0; i < totalBatches; i++) {
-            final int start = i * batchSize;
-            final int end = Math.min(start + batchSize, length);
-            final int batchIndex = i;
-
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                try {
-                    List<String> batchList = texts.subList(start, end);
-
-                    // 执行批量向量化
-                    List<float[]> embeddings = embeddingModel.embed(batchList);
-
-                    // 将结果放入正确的位置
-                    for (int j = 0; j < embeddings.size(); j++) {
-                        result.set(start + j, embeddings.get(j));
-                    }
-
-                    log.info("批次 {}/{} 完成，处理文本 {} 到 {}，共 {} 条",
-                            batchIndex + 1, totalBatches, start + 1, end, embeddings.size());
-
-                } catch (Exception e) {
-                    log.error("批次 {}/{} 处理失败: {}", batchIndex + 1, totalBatches, e.getMessage(), e);
-                    // 设置空数组作为占位符，避免NPE
-                    for (int j = start; j < end; j++) {
-                        result.set(j, new float[0]);
-                    }
-                }
-            }, executor);
-
-            futures.add(future);
-        }
-
-        // 等待所有任务完成
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        } finally {
-            executor.shutdown();
-            try {
-                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
-                    log.warn("线程池未能在60秒内正常关闭，强制终止");
-                }
-            } catch (InterruptedException e) {
-                executor.shutdownNow();
-                Thread.currentThread().interrupt();
-                log.error("线程池关闭时被中断", e);
-            }
-        }
-
-        // 检查是否有失败的向量化
-        long failedCount = result.stream().filter(arr -> arr == null || arr.length == 0).count();
-        if (failedCount > 0) {
-            log.warn("向量化完成，但有 {} 条文本向量化失败", failedCount);
-        } else {
-            log.info("向量化完成，所有 {} 条文本处理成功", length);
-        }
-
-        return result;
-    }
-
-    //  计算余弦相似度
-    private double cos(float[] a, float[] b) {
-        double dot = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-        return dot / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
     // 删除索引
@@ -298,7 +190,6 @@ public class MyVectorStore {
                 .indexName(indexName)
                 .prefix(prefix)
                 .metadataFields(
-                        RedisVectorStore.MetadataField.tag("childrenIds"),
                         RedisVectorStore.MetadataField.tag("bookId"),
                         RedisVectorStore.MetadataField.tag("page"),
                         RedisVectorStore.MetadataField.tag("id"),
@@ -388,51 +279,14 @@ public class MyVectorStore {
 
     // 查找相似度
     public List<Document> similaritySearch(org.springframework.ai.vectorstore.SearchRequest request) {
-        double similarityThreshold = request.getSimilarityThreshold() / 2;
-        double step = similarityThreshold / 5;
+        List<Document> documents = redisVectorStore.similaritySearch(request);
 
-        List<Document> out = new ArrayList<>();
-
-        SearchRequest rootRequest = SearchRequest.from(request)
-                .similarityThreshold(similarityThreshold)
-                .filterExpression("isRoot == '1'")
-                .build();
-
-        List<String> id = new ArrayList<>(redisVectorStore.similaritySearch(rootRequest)
-                .stream()
-                .map((doc) -> {
-                    String obj = (String) doc.getMetadata().get("childrenIds");
-                    String[] array = JSON.parseArray(obj, String.class).toArray(new String[0]);
-                    return (List<String>) new ArrayList<>(Arrays.asList(array));
-                }).flatMap(List::stream)
-                .toList());
-
-        while (!id.isEmpty()) {
-            Filter.Expression expression = new FilterExpressionBuilder()
-                    .in("id", id.toArray())
-                    .build();
-
-            similarityThreshold += step;
-            SearchRequest newRequest = SearchRequest.from(request)
-                    .similarityThreshold(similarityThreshold)
-                    .filterExpression(expression)
-                    .build();
-            List<Document> documents = redisVectorStore.similaritySearch(newRequest);
-            id.clear();
-            for (Document document : documents) {
-                String childrenIds = (String) document.getMetadata().get("childrenIds");
-                if (childrenIds != null) {
-                    id.addAll(List.of(JSON.parseArray(childrenIds, String.class).toArray(new String[0])));
-                } else {
-                    out.add(document);
-                }
-            }
-        }
-        return out.stream().map(document -> {
+        return documents.stream().map(document -> {
             Map<String, Object> metadata = document.getMetadata();
             String text = (String) metadata.get("text");
             metadata.put("text", document.getText());
-            return new Document(text, metadata);
+            String id = (String) metadata.get("id");
+            return new Document(id, text, metadata);
         }).toList();
     }
 
@@ -488,64 +342,4 @@ public class MyVectorStore {
         deleteIndex();
         clear();
     }
-
-    // 构建层
-    private List<TextSegment> buildLayer(List<TextSegment> textSegments, List<float[]> embeddings, double similarityThreshold, int index) {
-        List<TextSegment> out = new ArrayList<>();
-        // 判断是否已经添加到树中,默认False
-        List<Boolean> isAdd = new ArrayList<>(Collections.nCopies(textSegments.size(), false));
-
-        int length = textSegments.size();
-        for (int i = 0; i < length; i++) {
-            if (isAdd.get(i)) {
-                continue;
-            }
-            TextSegment textSegment = new TextSegment();
-            textSegment.setId(index);
-            index++;
-            textSegment.getChildren().add(textSegments.get(i));
-            for (int j = i + 1; j < length; j++) {
-                if (isAdd.get(j)) {
-                    continue;
-                }
-                double similarity = cos(embeddings.get(i), embeddings.get(j));
-                if (similarity > similarityThreshold) {
-                    textSegment.getChildren().add(textSegments.get(j));
-                    isAdd.set(j, true);
-                }
-            }
-            out.add(textSegment);
-        }
-        return out;
-    }
-
-    // 构建知识树
-    public TextSegment buildTree(List<TextSegment> textSegments) {
-        double similarityThreshold = 0.8;
-        int i = 0;
-        int index = textSegments.size();
-        while (textSegments.size() > 1) {
-            log.info("构建树:{}", i);
-            log.info("长度:{}", textSegments.size());
-            List<String> text = textSegments.stream()
-                    .map(TextSegment::getSummary)
-                    .toList();
-
-            log.info("向量化");
-            List<float[]> embeddings = embed(text, embeddingModel);
-
-            log.info("开始构建树");
-            textSegments = buildLayer(textSegments, embeddings, similarityThreshold, index);
-
-            log.info("生成总结文本");
-            textSegments = TextUtil.batchAggregateSummaries(textSegments);
-
-            similarityThreshold -= 0.2;
-            i++;
-            index += textSegments.size();
-        }
-        return textSegments.getFirst();
-
-    }
-
 }

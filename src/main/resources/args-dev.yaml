@@ -26,4 +26,4 @@ minio:
   bucket: medrec
 
 webclient:
-  fastApi: http://localhost:9000
+  fastApi: http://localhost:9999

@@ -7,6 +7,7 @@ import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.dto.VectorSearchArgs;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.service.VectorService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.web.bind.annotation.*;
@@ -40,12 +41,12 @@ public class VectorController {
     }
 
     @PostMapping
-    public Result<Integer> add(@RequestBody Vector vector) {
+    public Result<Integer> add(@Valid @RequestBody Vector vector) {
         return  Result.success(vectorService.create(vector));
     }
 
     @PutMapping
-    public Result<Void> update(@RequestBody Vector vector) {
+    public Result<Void> update(@Valid @RequestBody Vector vector) {
         vectorService.updateById(vector);
         vectorService.reBuild(vector);
         return  Result.success();

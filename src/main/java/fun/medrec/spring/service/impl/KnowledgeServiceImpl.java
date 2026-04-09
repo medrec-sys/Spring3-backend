@@ -84,18 +84,17 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
 
         Result<List<TextSegment>> listResult = httpService.fileToMd(multipartFile);
         List<TextSegment> summarizer = TextUtil.summarizer(listResult.getData(), 1);
-        TextSegment tree = store.buildTree(summarizer);
 
         Knowledge knowledge = new Knowledge();
         knowledge.setName(name);
         knowledge.setPath(path);
         knowledge.setVectorId(vectorId);
-        knowledge.setChunk(tree.getNodeNum());
+        knowledge.setChunk(summarizer.size());
         knowledge.setCreateBy(userId);
         knowledgeMapper.insert(knowledge);
         MinioUtil.loadFile(multipartFile, path);
 
-        List<Document> documents = TextUtil.TextToDocuments(tree, knowledge.getId());
+        List<Document> documents = TextUtil.TextToDocuments(summarizer, knowledge.getId());
         store.addDocuments(documents);
 
         return knowledge.getId();

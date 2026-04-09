@@ -5,6 +5,7 @@ import fun.medrec.spring.domain.dto.LoginData;
 import fun.medrec.spring.domain.entity.User;
 import fun.medrec.spring.service.UserService;
 import fun.medrec.spring.utils.JwtUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -33,7 +34,7 @@ public class LoginController {
     }
     // 注册接口
     @PostMapping("/register")
-    public Result<Integer> register(@RequestBody LoginData loginData) {
+    public Result<Integer> register(@Valid @RequestBody LoginData loginData) {
         int id = userService.register(loginData.getAccount(), loginData.getUsername(), loginData.getPassword());
         return Result.success(id);
     }

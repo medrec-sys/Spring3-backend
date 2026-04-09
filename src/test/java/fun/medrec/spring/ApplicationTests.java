@@ -1,6 +1,8 @@
 package fun.medrec.spring;
 
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -59,29 +61,24 @@ class ApplicationTests {
 
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
         objectMapper.writeValue(new File(outputPath01), textSegments);
-
-
-        TextSegment textSegment = myVectorStore.buildTree(textSegments);
-        // 保存到JSON文件
-        String outputPath02 = "D:/Source/windows/Desktop/merge.json";
-
-        objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-        objectMapper.writeValue(new File(outputPath02), textSegment);
     }
 
     @Test
     void test02() throws Exception {
         Vector byId = vectorService.getById(1);
         MyVectorStore myVectorStore = new MyVectorStore(byId);
-        String outputPath0 = "D:/Source/windows/Desktop/merge.json";
+        String outputPath0 = "D:/Source/windows/Desktop/summarized.json";
 
-        TextSegment textSegment = objectMapper.readValue(
+        List<TextSegment> textSegments = objectMapper.readValue(
                 new File(outputPath0),
                 new TypeReference<>() {
                 }
         );
-        List<Document> documents = TextUtil.TextToDocuments(textSegment, 1);
-        myVectorStore.addDocuments(documents);
+        for (int i = 0; i < 1; i++) {
+            List<Document> documents = TextUtil.TextToDocuments(textSegments, i);
+            myVectorStore.addDocuments(documents);
+        }
+
     }
 
     @Test
@@ -89,17 +86,28 @@ class ApplicationTests {
         Vector byId = vectorService.getById(1);
         MyVectorStore myVectorStore = new MyVectorStore(byId);
 
+
         SearchRequest request = SearchRequest.builder()
-                .query("胄少年高血压的治疗方法")
-                .topK(15)                       // Return top 5 results
-                .similarityThreshold(0.9)      // Only return results with similarity score >= 0.7
+                .query("初诊高血压患者的管理见表14。表14初诊高血压患者的管理初诊随访判断是否有靶器官损害血压及有关的症状和体征判断是否有继发性高血压的可能治疗的副作用对高血压患者进行心血管综合危险度评估,确定是否要干预其他心血管危险因素影响生活方式改变和药物治疗依从性的障碍给予生活方式指导和药物治疗制定下一次随访日期建议家庭血压监测登记并加入高血压管理\"")
+                .topK(50)
+                .similarityThreshold(0.9)
                 .build();
 
+
         List<Document> documents = myVectorStore.similaritySearch(request);
+
+//        TimeUtil.measureTime(100, () -> {
+//            List<Document> documents = myVectorStore.doSimilarSearch(request);
+//
+//        });
+
         for (Document document : documents) {
-            log.info("2{}", document.getText());
+            log.info("doc{}\n\n\n\n", JSON.toJSONString( document, SerializerFeature.PrettyFormat));
         }
-        log.info("111{}", documents.size());
+
+
+
+
     }
 
     @Test
@@ -109,7 +117,7 @@ class ApplicationTests {
         Vector vector = vectorService.getById(1);
         MyVectorStore myVectorStore = new MyVectorStore(vector);
         aiAgent.addVectorStore(myVectorStore);
-        String result = aiAgent.chat("青少年高血压如何治疗")
+        String result = aiAgent.chat("青年治疗高血压的药物以及使用方法和要点")
                 .collectList()
                 .map(list -> String.join("", list))
                 .block();  // 阻塞等待

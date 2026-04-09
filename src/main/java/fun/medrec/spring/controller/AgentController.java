@@ -5,6 +5,7 @@ import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.service.AgentService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,12 +35,12 @@ public class AgentController {
     }
 
     @PostMapping
-    public Result<Integer> add(@RequestBody Agent agent) {
+    public Result<Integer> add(@Valid @RequestBody Agent agent) {
         return Result.success(agentService.create(agent));
     }
 
     @PutMapping
-    public Result<Void> update(@RequestBody Agent agent) {
+    public Result<Void> update(@Valid @RequestBody Agent agent) {
         agentService.updateById(agent);
         agentService.reBuildAgent(agent.getId());
         return Result.success();

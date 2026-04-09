@@ -5,6 +5,7 @@ import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.User;
 import fun.medrec.spring.service.UserService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,12 +36,12 @@ public class UserController {
     }
 
     @PostMapping
-    public Result<Integer> add(@RequestBody User user) {
+    public Result<Integer> add(@Valid @RequestBody User user) {
         return Result.success(userService.create(user));
     }
 
     @PutMapping
-    public Result<Void> update(@RequestBody User user) {
+    public Result<Void> update(@Valid @RequestBody User user) {
         return userService.updateById(user) ? Result.success() : Result.error("更新失败");
     }
 }

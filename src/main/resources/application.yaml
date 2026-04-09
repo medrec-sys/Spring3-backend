@@ -1,7 +1,7 @@
 spring:
   config:
     import:
-      - optional:classpath:args.yaml
+      - optional:classpath:args-dev.yaml
   servlet:
     multipart:
       max-file-size: 1024MB
@@ -25,12 +25,11 @@ spring:
       api-key:  ${A_LI_YUN-API-KEY}
       chat:
         options:
-          model: "qwen-plus"
+          model: "qwen3-max"
       embedding:
         options:
           model: "text-embedding-v4"
-          max-length: 2000 # 文本分割的最大长度
-          similarity: 0.6 #  相似度阈值(用于合并相似的文本)
+
   data:
     redis:
       host: ${redis.url}

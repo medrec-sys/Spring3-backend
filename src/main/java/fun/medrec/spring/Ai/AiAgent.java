@@ -22,6 +22,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
+import org.springframework.ai.rag.preretrieval.query.expansion.MultiQueryExpander;
 import org.springframework.ai.rag.preretrieval.query.transformation.CompressionQueryTransformer;
 import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
 import org.springframework.ai.template.st.StTemplateRenderer;
@@ -39,45 +40,63 @@ public class AiAgent {
     private static OpenAiApi openAiApi;
     private static JdbcTemplate jdbcTemplate;
     private static final String SEARCH_TEMPLATE = """
-			用户问题：{query}
-
-			相关上下文：
-			---------------------
-			{context}
-			---------------------
-
-			回答规则：
-			1. 严格基于上述上下文信息回答
-			2. 不要使用你的先验知识
-			3. 如果上下文中没有相关信息，请回复："抱歉，根据当前知识库，我无法回答这个问题"
-			4. 回答要简洁、准确
-
-			请回答：
-			""";
+            用户问题：{query}
+            
+            相关上下文：
+            ---------------------
+            {context}
+            ---------------------
+            
+            回答规则：
+            1. 严格基于上述上下文信息回答
+            2. 不要使用你的先验知识
+            3. 如果上下文中没有相关信息，请回复："抱歉，根据当前知识库，我无法回答这个问题"
+            4. 回答要简洁、准确
+            5. 与用户的友好交互型问题可以回答，例如：你是谁？ | 你好！ | 你可以回答哪些问题？
+            
+            请回答：
+            """;
     private static final String REWRITER_TEMPLATE = """
-			给定用户查询，将其重写以在查询{target}时获得更好的结果。
-			移除任何无关信息，并确保查询简洁且具体。
-
-			原始查询：
-			{query}
-
-			重写后的查询：
-			""";
+            给定用户查询，将其重写以在查询{target}时获得更好的结果。
+            移除任何无关信息，并确保查询简洁且具体。
+            
+            原始查询：
+            {query}
+            
+            重写后的查询：
+            """;
 
     private static final String COMPRESSION_TEMPLATE = """
-			请将新问题与对话历史结合，生成一个完整的独立查询。
-			
-			示例：
-			历史：用户问"北京天气怎么样？"
-			新问题："明天呢？"
-			独立查询："北京明天天气怎么样？"
-			
-			现在请处理：
-			对话历史：{history}
-			新问题：{query}
-			
-			独立查询：
-			""";
+            请将新问题与对话历史结合，生成一个完整的独立查询。
+            
+            示例：
+            历史：用户问"北京天气怎么样？"
+            新问题："明天呢？"
+            独立查询："北京明天天气怎么样？"
+            
+            现在请处理：
+            对话历史：{history}
+            新问题：{query}
+            
+            独立查询：
+            """;
+
+    private static final String EXPANSION_PROMPT = """
+            你是专业的RAG查询优化专家，擅长生成高质量检索问句。
+            请为用户问题生成**{number}个语义等价、表述不同**的查询变体，用于提升向量库检索召回率。
+
+            生成规则：
+            1. 严格保留原始问题的核心意图，不改变主题与诉求。
+            2. 智能替换同义词、近义词、相关专业术语（如青年→青少年、年轻人、低龄人群）。
+            3. 从不同视角生成变体（定义、原因、治疗、方案、注意事项等），扩大检索覆盖。
+            4. 语句简洁、关键词明确，适合向量检索。
+            5. **禁止任何解释、标题、序号、多余内容**，只输出纯查询变体。
+            6. 每个查询变体占一行，仅用换行分隔。
+
+            用户问题：{query}
+
+            查询变体：
+            """;
 
     private ChatClient client;
     private final Agent agent;
@@ -97,10 +116,12 @@ public class AiAgent {
                 .baseUrl(baseUrl)
                 .build();
 
+
         AiAgent.agentCache = Caffeine.newBuilder()
                 .maximumSize(1000)
                 .expireAfterAccess(30, TimeUnit.MINUTES)
                 .build();
+
     }
 
     public static AiAgent getAgent(Integer id) {
@@ -138,6 +159,8 @@ public class AiAgent {
         ChatClient.Builder rewriterBuilder = ChatClient.builder(model);
         // 用于压缩对话历史的model
         ChatClient.Builder compressionQueryBuilder = ChatClient.builder(model);
+        // 用于扩展查询
+        ChatClient.Builder expansionQueryBuilder = ChatClient.builder(model);
 
         // 配置记忆
         ChatMemoryRepository chatMemoryRepository = JdbcChatMemoryRepository.builder()
@@ -156,7 +179,7 @@ public class AiAgent {
         DocumentAdvisor documentAdvisor = new DocumentAdvisor(this);
         builder.defaultAdvisors(documentAdvisor);
 
-        // 配置对话重写和历史消息压缩
+        // 配置对话重写,历史消息压缩,查询扩展
         PromptTemplate rewriterPromptTemplate = PromptTemplate.builder()
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(REWRITER_TEMPLATE)
@@ -165,6 +188,12 @@ public class AiAgent {
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(COMPRESSION_TEMPLATE)
                 .build();
+        PromptTemplate expansionPromptTemplate = PromptTemplate.builder()
+                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
+                .template(EXPANSION_PROMPT)
+                .build();
+
+
         RewriteQueryTransformer transformer = RewriteQueryTransformer.builder()
                 .chatClientBuilder(rewriterBuilder.build().mutate())
                 .promptTemplate(rewriterPromptTemplate)
@@ -172,6 +201,11 @@ public class AiAgent {
         CompressionQueryTransformer compressionTransformer = CompressionQueryTransformer.builder()
                 .chatClientBuilder(compressionQueryBuilder.build().mutate())
                 .promptTemplate(compressionPromptTemplate)
+                .build();
+        MultiQueryExpander queryExpander = MultiQueryExpander.builder()
+                .chatClientBuilder(expansionQueryBuilder)
+                .promptTemplate(expansionPromptTemplate)
+                .numberOfQueries(10)
                 .build();
 
         MultiVectorStoreDocumentRetriever documentRetriever = MultiVectorStoreDocumentRetriever.builder()
@@ -183,12 +217,16 @@ public class AiAgent {
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(SEARCH_TEMPLATE)
                 .build();
-        ContextualQueryAugmenter augmenter = ContextualQueryAugmenter.builder().promptTemplate(searchPromptTemplate).build();
+        ContextualQueryAugmenter augmenter = ContextualQueryAugmenter.builder()
+                .allowEmptyContext(true)
+                .promptTemplate(searchPromptTemplate)
+                .build();
 
         // 配置RetrievalAugmentationAdvisor
         Advisor retrievalAugmentationAdvisor = RetrievalAugmentationAdvisor.builder()
                 .documentRetriever(documentRetriever)
                 .queryAugmenter(augmenter)
+                .queryExpander(queryExpander)
                 .queryTransformers(transformer, compressionTransformer)
                 .build();
         builder.defaultAdvisors(retrievalAugmentationAdvisor);
@@ -202,8 +240,8 @@ public class AiAgent {
                 .system(agent.getPrompt())
                 .user(sentence)
                 .advisors(
-                a -> a.param(ChatMemory.CONVERSATION_ID, agent.getId())
-        )
+                        a -> a.param(ChatMemory.CONVERSATION_ID, agent.getId())
+                )
                 .stream()
                 .content();
     }
