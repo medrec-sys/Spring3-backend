@@ -1,11 +1,11 @@
 package fun.medrec.spring.utils;
 
+import fun.medrec.spring.domain.bo.FileData;
 import fun.medrec.spring.exception.BusinessException;
 import io.minio.*;
 import lombok.SneakyThrows;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 
 public class MinioUtil {
     private static MinioClient minioClient;
@@ -34,28 +34,18 @@ public class MinioUtil {
     }
 
     @SneakyThrows
-    public static void loadFile(MultipartFile multipartFile, String objectName) {
+    public static void loadFile(FileData fileData, String objectName) {
         PutObjectArgs args = PutObjectArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
-                .stream(multipartFile.getInputStream(),
-                        multipartFile.getSize(),
+                .stream(new ByteArrayInputStream(fileData.getBytes()),
+                        fileData.getBytes().length,
                         -1)
-                .contentType(multipartFile.getContentType())
+                .contentType(fileData.getContentType())
                 .build();
         minioClient.putObject(args);
     }
-    @SneakyThrows
-    public static InputStream downLoadFile(String objectName) {
-        if (!isFileExists(objectName)) {
-            throw new BusinessException("文件不存在");
-        }
-        GetObjectArgs args = GetObjectArgs.builder()
-                .bucket(bucketName)
-                .object(objectName)
-                .build();
-        return minioClient.getObject(args);
-    }
+
     public static String getFileUrl(String objectName) {
         return clientPoint + "/" + bucketName + "/" + objectName;
     }

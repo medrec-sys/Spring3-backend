@@ -1,15 +1,16 @@
 package fun.medrec.spring.service.impl;
 
 import fun.medrec.spring.config.ArgsConfig;
+import fun.medrec.spring.domain.bo.FileData;
 import fun.medrec.spring.domain.bo.TextSegment;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.service.HttpService;
 import fun.medrec.spring.utils.HttpUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.client.WebClient;
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -30,13 +31,20 @@ public class HttpServiceImpl implements HttpService {
     }
 
     @Override
-    public Result<List<TextSegment>> fileToMd(MultipartFile multipartFile) {
+    public Result<List<TextSegment>> fileToMd(FileData fileData) {
         try {
+            ByteArrayResource resource = new ByteArrayResource(fileData.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return fileData.getName();
+                }
+            };
+
             // 构建 multipart/form-data 请求体
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
-            builder.part("file", multipartFile.getResource())
-                    .filename(multipartFile.getOriginalFilename() == null ? "file" : multipartFile.getOriginalFilename())
-                    .contentType(MediaType.valueOf(multipartFile.getContentType() == null ? "application/octet-stream" : multipartFile.getContentType()));
+            builder.part("file", resource)
+                    .filename(fileData.getName() == null ? "file" : fileData.getName() )
+                    .contentType(MediaType.valueOf(fileData.getContentType() == null ? "application/octet-stream" : fileData.getContentType()));
 
             String response = webClient.post()
                     .uri(argsConfig.fastApiUrl + "/api/file")

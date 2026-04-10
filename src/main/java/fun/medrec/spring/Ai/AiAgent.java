@@ -21,7 +21,6 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
-import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 import org.springframework.ai.rag.preretrieval.query.expansion.MultiQueryExpander;
 import org.springframework.ai.rag.preretrieval.query.transformation.CompressionQueryTransformer;
 import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
@@ -50,9 +49,8 @@ public class AiAgent {
             回答规则：
             1. 严格基于上述上下文信息回答
             2. 不要使用你的先验知识
-            3. 如果上下文中没有相关信息，请回复："抱歉，根据当前知识库，我无法回答这个问题"
+            3. 如果上下文中没有相关信息，请说明上下文可以回答哪些问题以及做出简单的回答
             4. 回答要简洁、准确
-            5. 与用户的友好交互型问题可以回答，例如：你是谁？ | 你好！ | 你可以回答哪些问题？
             
             请回答：
             """;
@@ -92,6 +90,7 @@ public class AiAgent {
             4. 语句简洁、关键词明确，适合向量检索。
             5. **禁止任何解释、标题、序号、多余内容**，只输出纯查询变体。
             6. 每个查询变体占一行，仅用换行分隔。
+            7. 与用户的友好交互型问题与文档知识无关可以直接返回查询语句，例如：你是谁？ | 你好！ | 你可以回答哪些问题？
 
             用户问题：{query}
 
@@ -217,7 +216,7 @@ public class AiAgent {
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(SEARCH_TEMPLATE)
                 .build();
-        ContextualQueryAugmenter augmenter = ContextualQueryAugmenter.builder()
+        MyContextualQueryAugmenter augmenter = MyContextualQueryAugmenter.builder()
                 .allowEmptyContext(true)
                 .promptTemplate(searchPromptTemplate)
                 .build();

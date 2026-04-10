@@ -1,7 +1,6 @@
 package fun.medrec.spring.interceptor;
 
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.serializer.SerializerFeature;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
@@ -63,8 +62,6 @@ public class LoginInterceptor implements HandlerInterceptor {
             response.getWriter().write(notLogin);
             return false;
         }
-        log.info("jwt合法");
-        log.info("jwt解析: {}", JSONObject.toJSONString(JwtUtil.parseJWT(jwt), SerializerFeature.PrettyFormat));
         return true;
     }
 }

@@ -1,15 +1,19 @@
 package fun.medrec.spring.controller;
 
+import fun.medrec.spring.domain.bo.FileData;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Knowledge;
+import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.service.KnowledgeService;
+import fun.medrec.spring.utils.AsyncTaskUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/knowledge")
@@ -18,8 +22,11 @@ public class KnowledgeController {
 
     private final KnowledgeService knowledgeService;
 
-    public KnowledgeController(KnowledgeService knowledgeService) {
+    private final AsyncTaskUtil asyncTaskUtil;
+
+    public KnowledgeController(KnowledgeService knowledgeService, AsyncTaskUtil asyncTaskUtil) {
         this.knowledgeService = knowledgeService;
+        this.asyncTaskUtil = asyncTaskUtil;
     }
 
     @PostMapping("/list")
@@ -40,8 +47,22 @@ public class KnowledgeController {
     }
 
     @PostMapping("/{vectorId}")
-    public Result<Integer> add(@RequestParam MultipartFile file, @PathVariable Integer vectorId) {
-        return Result.success(knowledgeService.save(file, vectorId));
+    public Result<String> add(@RequestParam MultipartFile file, @PathVariable Integer vectorId) {
+        String taskId = UUID.randomUUID().toString();
+
+        FileData fileData = new FileData(file);
+
+        int userId = UserContext.getId();
+
+        knowledgeService.saveAsync(taskId, fileData, vectorId, userId)
+                .thenAccept(result -> asyncTaskUtil.finishTask(taskId))
+                .exceptionally(throwable -> {
+                    asyncTaskUtil.errorTask(taskId, throwable.toString());
+                    return null;
+                });
+
+        // 立即返回任务ID
+        return Result.success(taskId);
     }
 
     @PutMapping

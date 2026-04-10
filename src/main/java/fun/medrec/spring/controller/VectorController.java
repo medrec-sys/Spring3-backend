@@ -53,7 +53,7 @@ public class VectorController {
     }
 
     @PostMapping("/search/{id}")
-    public Result<List<Document>> search(@PathVariable Integer id, @RequestBody VectorSearchArgs args) {
+    public Result<List<Document>> search(@PathVariable Integer id, @Valid @RequestBody VectorSearchArgs args) {
         MyVectorStore store = MyVectorStore.getStore(id);
         if (store == null) {
             store = vectorService.createVector(id);
