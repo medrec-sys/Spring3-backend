@@ -1,7 +1,7 @@
 spring:
   config:
     import:
-      - optional:classpath:args.yaml
+      - optional:classpath:args-dev.yaml
   servlet:
     multipart:
       max-file-size: 1024MB
@@ -55,3 +55,6 @@ mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
 server:
   port: ${internet.PORT}
+
+minerU:
+  token: "eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiIxNDYwMDIzNCIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc3Njk0MjczMywiY2xpZW50SWQiOiJsa3pkeDU3bnZ5MjJqa3BxOXgydyIsInBob25lIjoiIiwib3BlbklkIjpudWxsLCJ1dWlkIjoiMGRkMGZlNGItMzhiZS00MDk2LWFiOTEtMTZjZmIzZWFiZTk1IiwiZW1haWwiOiIiLCJleHAiOjE3ODQ3MTg3MzN9.-JOpkMP5EAjCBXIY_SsIYfyQQA7IvnrnUNG9qFPsPTO3zYBJ7Zfm2gG-nDuq5rnTyl3vHpf360psaTSH-0Jrkg"

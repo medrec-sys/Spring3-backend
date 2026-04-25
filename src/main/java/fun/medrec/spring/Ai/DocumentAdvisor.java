@@ -14,6 +14,12 @@ import java.util.Map;
 
 import static org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor.DOCUMENT_CONTEXT;
 
+/**
+ * @author 彭超
+ * @version 1.0
+ * @description 存储检索到的文档，并存储到aiAgent
+ * @date 2026-04-24 20:29
+ */
 @Slf4j
 public class DocumentAdvisor implements BaseAdvisor {
     private final AiAgent aiAgent;

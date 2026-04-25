@@ -1,12 +1,14 @@
 package fun.medrec.spring.utils;
 
-import fun.medrec.spring.domain.bo.FileData;
 import fun.medrec.spring.exception.BusinessException;
 import io.minio.*;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 
+@Slf4j
 public class MinioUtil {
     private static MinioClient minioClient;
     private static String bucketName;
@@ -25,7 +27,7 @@ public class MinioUtil {
                     StatObjectArgs.builder()
                             .bucket(bucketName)
                             .object(objectName)
-                    .build()
+                            .build()
             );
             return true;
         } catch (Exception e) {
@@ -34,18 +36,30 @@ public class MinioUtil {
     }
 
     @SneakyThrows
-    public static void loadFile(FileData fileData, String objectName) {
+    public static void loadFile(MultipartFile multipartFile, String objectName) {
         PutObjectArgs args = PutObjectArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
-                .stream(new ByteArrayInputStream(fileData.getBytes()),
-                        fileData.getBytes().length,
+                .stream(multipartFile.getInputStream(),
+                        multipartFile.getSize(),
                         -1)
-                .contentType(fileData.getContentType())
+                .contentType(multipartFile.getContentType())
                 .build();
         minioClient.putObject(args);
+        log.info("上传成功:{}", objectName);
     }
-
+    @SneakyThrows
+    public static InputStream downLoadFile(String objectName) {
+        if (!isFileExists(objectName)) {
+            log.error("下载的文件不存在:{}", objectName);
+            throw new BusinessException("文件不存在:" + objectName);
+        }
+        GetObjectArgs args = GetObjectArgs.builder()
+                .bucket(bucketName)
+                .object(objectName)
+                .build();
+        return minioClient.getObject(args);
+    }
     public static String getFileUrl(String objectName) {
         return clientPoint + "/" + bucketName + "/" + objectName;
     }
@@ -53,7 +67,8 @@ public class MinioUtil {
     @SneakyThrows
     public static void deleteFile(String objectName) {
         if (!isFileExists(objectName)) {
-            throw new BusinessException("文件不存在");
+            log.error("需删除的文件不存在:{}", objectName);
+            throw new BusinessException("文件不存在:" + objectName);
         }
         RemoveObjectArgs args = RemoveObjectArgs.builder()
                 .bucket(bucketName)
@@ -61,6 +76,7 @@ public class MinioUtil {
                 .build();
 
         minioClient.removeObject(args);
+        log.info("删除文件成功:{}", objectName);
     }
 
 }

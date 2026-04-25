@@ -19,11 +19,15 @@ import org.springframework.ai.rag.util.PromptAssert;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
-
+/**
+ * @author 彭超
+ * @version 1.0
+ * @description 重新源码以解决历史消息丢失问题， 重新augment方法
+ * @date 2026-04-24 20:24
+ */
 public final class MyContextualQueryAugmenter implements QueryAugmenter {
 
     private static final Logger logger = LoggerFactory.getLogger(MyContextualQueryAugmenter.class);
-
     private static final PromptTemplate DEFAULT_PROMPT_TEMPLATE = new PromptTemplate("""
 			Context information is below.
 
@@ -76,11 +80,13 @@ public final class MyContextualQueryAugmenter implements QueryAugmenter {
         PromptAssert.templateHasRequiredPlaceholders(this.promptTemplate, "query", "context");
     }
 
+    /**
+     * @description 源代码会创建一个新的查询，所以会丢失历史消息，重新的代码基于旧查询创建，保留历史消息
+     */
     @Override
     public @NotNull Query augment(@NotNull Query query, @NotNull List<Document> documents) {
         Assert.notNull(query, "query cannot be null");
         Assert.notNull(documents, "documents cannot be null");
-
         logger.debug("Augmenting query with contextual data");
 
         if (documents.isEmpty()) {
@@ -94,6 +100,7 @@ public final class MyContextualQueryAugmenter implements QueryAugmenter {
         Map<String, Object> promptParameters = Map.of("query", query.text(), "context", documentContext);
 
         // 3. Augment user prompt with document context.
+        // 源码是新建一个请求从而丢失历史消息：return new Query(this.promptTemplate.render(promptParameters));
         String augmentedText = this.promptTemplate.render(promptParameters);
         return query.mutate().text(augmentedText).build();
     }

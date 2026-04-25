@@ -1,5 +1,7 @@
 package fun.medrec.spring.Ai;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Vector;
@@ -13,8 +15,10 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.redis.RedisVectorStore;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.Cursor;
@@ -145,18 +149,18 @@ public class MyVectorStore {
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
-                        // text
-                        "$.text".getBytes(),
+                        // parentId
+                        "$.parentId".getBytes(),
                         "AS".getBytes(),
-                        "text".getBytes(),
+                        "parentId".getBytes(),
                         "TAG".getBytes(),
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
-                        // isRoot
-                        "$.isRoot".getBytes(),
+                        // text
+                        "$.text".getBytes(),
                         "AS".getBytes(),
-                        "isRoot".getBytes(),
+                        "text".getBytes(),
                         "TAG".getBytes(),
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
@@ -193,7 +197,8 @@ public class MyVectorStore {
                         RedisVectorStore.MetadataField.tag("bookId"),
                         RedisVectorStore.MetadataField.tag("page"),
                         RedisVectorStore.MetadataField.tag("id"),
-                        RedisVectorStore.MetadataField.tag("text")
+                        RedisVectorStore.MetadataField.tag("text"),
+                        RedisVectorStore.MetadataField.tag("parentId")
                 )
                 .initializeSchema(true)
                 .build();
@@ -241,7 +246,7 @@ public class MyVectorStore {
                     vectorStore.add(batch);
 
                     synchronized (System.out) {
-                        log.info("完成处理第 {}/{} 批次，文档数量：{}",
+                        log.info("\r完成处理第 {}/{} 批次，文档数量：{}",
                                 batchIndex + 1, batchCount, batch.size());
                     }
 
@@ -277,8 +282,10 @@ public class MyVectorStore {
         }
     }
 
-    // 查找相似度
-    public List<Document> similaritySearch(org.springframework.ai.vectorstore.SearchRequest request) {
+    /**
+     * @description 获取相似度
+     */
+    public List<Document> similaritySearchWithAiSummery(org.springframework.ai.vectorstore.SearchRequest request) {
         List<Document> documents = redisVectorStore.similaritySearch(request);
 
         return documents.stream().map(document -> {
@@ -288,6 +295,84 @@ public class MyVectorStore {
             String id = (String) metadata.get("id");
             return new Document(id, text, metadata);
         }).toList();
+    }
+
+    /**
+     * @description 获取相似度
+     */
+    public List<Document> similaritySearchWithSplitSentence(org.springframework.ai.vectorstore.SearchRequest request) {
+        // 查询子节点
+        Filter.Expression childExpression = new FilterExpressionBuilder()
+                .ne("parentId", "0")
+                .build();
+        SearchRequest childRequest = SearchRequest
+                .from(request)
+                .topK(request.getTopK())
+                .filterExpression(childExpression)
+                .build();
+        List<Document> childDocuments = redisVectorStore.similaritySearch(childRequest);
+
+        if (childDocuments.isEmpty()) {
+            return List.of();
+        }
+
+        // 获取子查询的最高相似度
+        Map<String, Double> childSimilarityScores = new HashMap<>();
+        for (Document childDocument : childDocuments) {
+            String parentId = (String) childDocument.getMetadata().get("parentId");
+            Double similarityScore = childDocument.getScore();
+            Double oldScore = childSimilarityScores.get(parentId);
+            if (similarityScore == null) {
+                continue;
+            }
+            if (oldScore == null || oldScore < similarityScore) {
+                childSimilarityScores.put(parentId, similarityScore);
+            }
+        }
+        log.debug("topK: {}", request.getTopK());
+        log.debug("len: {}", childSimilarityScores.size());
+        log.debug("子查询最高相似度: {}", JSON.toJSONString(childSimilarityScores));
+
+        List<String> parentIds = childDocuments.stream()
+                .map(document -> (String) document.getMetadata().get("parentId"))
+                .distinct()  // 去重
+                .toList();
+        Filter.Expression parentExpression = new FilterExpressionBuilder()
+                .in("id", parentIds.toArray())
+                .build();
+        SearchRequest parentRequest = SearchRequest
+                .builder()
+                .topK(request.getTopK())
+                .similarityThreshold(0)
+                .filterExpression(parentExpression)
+                .build();
+
+        List<Document> documents = redisVectorStore.similaritySearch(parentRequest);
+
+
+
+        List<Document> list = documents.stream().map(document -> {
+            String parentId = (String) document.getMetadata().get("id");
+            Double score = childSimilarityScores.get(parentId);
+            return document.mutate()
+                    .score(score)
+                    .build();
+        }).toList();
+
+        log.debug("list: {}", JSON.toJSONString(list, SerializerFeature.PrettyFormat));
+        log.debug("childDocuments: {}", JSON.toJSONString(childDocuments, SerializerFeature.PrettyFormat));
+
+        return list;
+
+    }
+
+
+
+    /**
+     * @description 获取相似度
+     */
+    public List<Document> similaritySearch(org.springframework.ai.vectorstore.SearchRequest request) {
+        return similaritySearchWithSplitSentence(request);
     }
 
     // 清空知识库

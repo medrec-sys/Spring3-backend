@@ -27,3 +27,4 @@ minio:
 
 webclient:
   fastApi: http://host.docker.internal:9999
+

@@ -27,3 +27,4 @@ minio:
 
 webclient:
   fastApi: http://localhost:9999
+

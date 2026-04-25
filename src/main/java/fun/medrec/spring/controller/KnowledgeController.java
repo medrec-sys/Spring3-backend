@@ -1,6 +1,7 @@
 package fun.medrec.spring.controller;
 
-import fun.medrec.spring.domain.bo.FileData;
+
+import fun.medrec.spring.domain.bo.ReusableMultipartFile;
 import fun.medrec.spring.domain.common.PageDTO;
 import fun.medrec.spring.domain.common.PageVO;
 import fun.medrec.spring.domain.common.Result;
@@ -43,18 +44,25 @@ public class KnowledgeController {
 
     @DeleteMapping("/{id}")
     public Result<Integer> delete(@PathVariable Integer id) {
+        log.info("删除知识 id: {}", id);
         return Result.success(knowledgeService.delete(id));
     }
 
     @PostMapping("/{vectorId}")
     public Result<String> add(@RequestParam MultipartFile file, @PathVariable Integer vectorId) {
+        log.info("添加知识\n 文件：{}\n大小: {}", file.getOriginalFilename(), file.getSize());
         String taskId = UUID.randomUUID().toString();
 
-        FileData fileData = new FileData(file);
-
         int userId = UserContext.getId();
+        ReusableMultipartFile reusableMultipartFile;
+        try {
+            reusableMultipartFile = new ReusableMultipartFile(file);
+        } catch (Exception e) {
+            log.error("文件上传失败", e);
+            throw new RuntimeException("文件上传失败");
+        }
 
-        knowledgeService.saveAsync(taskId, fileData, vectorId, userId)
+        knowledgeService.saveAsync(taskId, reusableMultipartFile, vectorId, userId)
                 .thenAccept(result -> asyncTaskUtil.finishTask(taskId))
                 .exceptionally(throwable -> {
                     asyncTaskUtil.errorTask(taskId, throwable.toString());

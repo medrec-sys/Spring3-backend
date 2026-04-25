@@ -39,21 +39,22 @@ public class AiAgent {
     private static OpenAiApi openAiApi;
     private static JdbcTemplate jdbcTemplate;
     private static final String SEARCH_TEMPLATE = """
-            用户问题：{query}
-            
-            相关上下文：
-            ---------------------
-            {context}
-            ---------------------
-            
-            回答规则：
-            1. 严格基于上述上下文信息回答
-            2. 不要使用你的先验知识
-            3. 如果上下文中没有相关信息，请说明上下文可以回答哪些问题以及做出简单的回答
-            4. 回答要简洁、准确
-            
-            请回答：
-            """;
+        用户问题：{query}
+        
+        相关上下文：
+        ---------------------
+        {context}
+        ---------------------
+        
+        回答规则：
+        1. 严格基于上述上下文信息回答，不要使用你的先验知识。
+        2. 如果上下文包含直接答案，请简洁、准确地回答。
+        3. 如果上下文不包含直接答案，但包含相关、可推断的信息，请进行合理的逻辑整合与推断，并在回答中明确说明推断依据。
+        4. 如果上下文完全没有相关信息，请直接说明“上下文中未提供相关信息”，并简要列出上下文实际覆盖的主要内容范围。
+        5. 回答要结构清晰、客观准确。
+        
+        请回答：
+        """;
     private static final String REWRITER_TEMPLATE = """
             给定用户查询，将其重写以在查询{target}时获得更好的结果。
             移除任何无关信息，并确保查询简洁且具体。
@@ -191,39 +192,44 @@ public class AiAgent {
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(EXPANSION_PROMPT)
                 .build();
+        PromptTemplate searchPromptTemplate = PromptTemplate.builder()
+                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
+                .template(SEARCH_TEMPLATE)
+                .build();
 
-
+        // 重新查询增强，使其根据专业
         RewriteQueryTransformer transformer = RewriteQueryTransformer.builder()
                 .chatClientBuilder(rewriterBuilder.build().mutate())
                 .promptTemplate(rewriterPromptTemplate)
                 .build();
+        // 结合历史对话优化查询
         CompressionQueryTransformer compressionTransformer = CompressionQueryTransformer.builder()
                 .chatClientBuilder(compressionQueryBuilder.build().mutate())
                 .promptTemplate(compressionPromptTemplate)
                 .build();
+        // 根据已有查询，格外生成多方面的查询
         MultiQueryExpander queryExpander = MultiQueryExpander.builder()
                 .chatClientBuilder(expansionQueryBuilder)
                 .promptTemplate(expansionPromptTemplate)
                 .numberOfQueries(10)
                 .build();
-
+        // 文档查询器
         MultiVectorStoreDocumentRetriever documentRetriever = MultiVectorStoreDocumentRetriever.builder()
                 .vectorStores(stores)
                 .topK(agent.getTopK())
                 .similarityThreshold(agent.getSimilarity())
                 .build();
-        PromptTemplate searchPromptTemplate = PromptTemplate.builder()
-                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
-                .template(SEARCH_TEMPLATE)
-                .build();
+        // 查询增强器，用于将检索到的文档内容整合到用户查询中
         MyContextualQueryAugmenter augmenter = MyContextualQueryAugmenter.builder()
                 .allowEmptyContext(true)
                 .promptTemplate(searchPromptTemplate)
                 .build();
-
+        // 检索后处理器
+        MyDocumentPostProcessor myDocumentPostProcessor = new MyDocumentPostProcessor();
         // 配置RetrievalAugmentationAdvisor
         Advisor retrievalAugmentationAdvisor = RetrievalAugmentationAdvisor.builder()
                 .documentRetriever(documentRetriever)
+                .documentPostProcessors(myDocumentPostProcessor)
                 .queryAugmenter(augmenter)
                 .queryExpander(queryExpander)
                 .queryTransformers(transformer, compressionTransformer)
@@ -240,6 +246,7 @@ public class AiAgent {
                 .user(sentence)
                 .advisors(
                         a -> a.param(ChatMemory.CONVERSATION_ID, agent.getId())
+                                .param("topK", agent.getTopK())
                 )
                 .stream()
                 .content();

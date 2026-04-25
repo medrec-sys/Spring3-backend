@@ -1,54 +1,59 @@
 package fun.medrec.spring;
 
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.serializer.SerializerFeature;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.Ai.MyVectorStore;
-import fun.medrec.spring.domain.bo.FileData;
 import fun.medrec.spring.domain.bo.TextSegment;
-import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.domain.entity.Vector;
 import fun.medrec.spring.service.AgentService;
-import fun.medrec.spring.service.HttpService;
 import fun.medrec.spring.service.VectorService;
+import fun.medrec.spring.utils.MinerUtil;
 import fun.medrec.spring.utils.TextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.util.MimeTypeUtils;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
-import java.util.Arrays;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.BreakIterator;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
+import java.util.*;
+
+import static java.lang.Thread.sleep;
 
 @Slf4j
 @SpringBootTest
 class ApplicationTests {
-    @Autowired
-    private VectorService vectorService;
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
     @Autowired
     private AgentService agentService;
     @Autowired
-    private HttpService httpService;
+    private VectorService vectorService;
 
-    String path = "D:/Source/windows/Desktop/hypertension_split.json";
-
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final List<String> testQuestions = Arrays.asList(
             // ====================== 一级：最简单（基础概念）======================
@@ -111,105 +116,164 @@ class ApplicationTests {
             "青少年高血压的降压目标是什么？"
     );
 
+    @Autowired
+    private MinerUtil minerUtil;
+    @Autowired
+    private TextUtil textUtil;
+    private final RestClient restClient = RestClient.create();
+
+    private static final String API_KEY = "sk-1ff40835f4a14e39970c2bbfacde8156";
+    private static final String API_URL = "https://dashscope.aliyuncs.com/compatible-mode";
+    private static final String MODEL = "qwen3.6-plus";
+    String local = "D:/Source/windows/Downloads/高血压 - 副本.pdf";
+
+
+
     @Test
     void test01() throws Exception {
-        List<TextSegment> textSegments = objectMapper.readValue(
-                new File(path),
-                new TypeReference<>() {
-                }
+        Path path = Paths.get(local);
+        byte[] content = Files.readAllBytes(path);
+
+        // 创建Mock文件
+        MockMultipartFile mockFile = new MockMultipartFile(
+                "file",
+                "高血压 - 副本.pdf",
+                "application/pdf",
+                content
         );
 
+        List<MultipartFile> files = List.of(mockFile);
 
-        textSegments = TextUtil.summarizer(textSegments, 2);
-        // 保存到JSON文件
-        String outputPath01 = "D:/Source/windows/Desktop/summarized.json";
+        String s = minerUtil.uploadAndParse(files);
+        while (true) {
+            MinerUtil.PollingResult zipUrl = minerUtil.getZipUrl(s);
+            sleep(1000);
+            if (zipUrl.isSuccess()) {
+                List<String> zipUrls = zipUrl.getZipUrls();
+                for (String url : zipUrls) {
+                    log.info("下载文件:{}", url);
+                    List<MinerUtil.ContentItem> contentItems = minerUtil.handleParseResult(url);
+                    String outputPath01 = "D:/Source/windows/Desktop/summarized01.json";
+                    String outputPath02 = "D:/Source/windows/Desktop/summarized02.json";
+                    String outputPath03 = "D:/Source/windows/Desktop/summarized03.json";
+                    String outputPath04 = "D:/Source/windows/Desktop/summarized04.json";
 
-        objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-        objectMapper.writeValue(new File(outputPath01), textSegments);
-    }
 
-    @Test
-    void test02() throws Exception {
-        Vector byId = vectorService.getById(1);
-        MyVectorStore myVectorStore = new MyVectorStore(byId);
-        String outputPath0 = "D:/Source/windows/Desktop/summarized.json";
 
-        List<TextSegment> textSegments = objectMapper.readValue(
-                new File(outputPath0),
-                new TypeReference<>() {
+
+                    log.info("开始写入向量库");
+                    objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+                    objectMapper.writeValue(new File(outputPath01), contentItems);
+                    List<TextSegment> textSegments = textUtil.textSegmentsFromMiner(contentItems, 0);
+                    log.info("开始写入向量库");
+                    objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+                    objectMapper.writeValue(new File(outputPath02), textSegments);
+                    log.info("开始写入向量库");
+                    List<TextSegment> textSegments1 = textUtil.strengthenWithSpilt(textSegments);
+                    objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+                    objectMapper.writeValue(new File(outputPath03), textSegments1);
+                    log.info("开始写入向量库");
+                    List<Document> docs = textUtil.toDocsWithSplit(textSegments1);
+                    objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+                    objectMapper.writeValue(new File(outputPath04), docs);
                 }
-        );
-        for (int i = 1; i < 2; i++) {
-            List<Document> documents = TextUtil.TextToDocuments(textSegments, i);
-            myVectorStore.addDocuments(documents);
+                break;
+            }
         }
-
     }
 
+
     @Test
-    void test03() {
-        Vector byId = vectorService.getById(1);
-        MyVectorStore myVectorStore = new MyVectorStore(byId);
+    public void chatWithImage() {
+        // 图片路径
+        String imagePath = "D:/Source/windows/Downloads/70bbbbe7-f3df-42dc-9b12-f7aa439164d2/images/0deaab291b3b0c512f19c583349414fb1e634ad3dd27b2e04d8b803aea19af7c.jpg";
 
+        OpenAiApi openAiApi = OpenAiApi.builder()
+                .apiKey(API_KEY)
+                .baseUrl(API_URL)
+                .build();
 
-        SearchRequest request = SearchRequest.builder()
-                .query("初诊高血压患者的管理见表14。表14初诊高血压患者的管理初诊随访判断是否有靶器官损害血压及有关的症状和体征判断是否有继发性高血压的可能治疗的副作用对高血压患者进行心血管综合危险度评估,确定是否要干预其他心血管危险因素影响生活方式改变和药物治疗依从性的障碍给予生活方式指导和药物治疗制定下一次随访日期建议家庭血压监测登记并加入高血压管理\"")
-                .topK(50)
-                .similarityThreshold(0.9)
+        OpenAiChatOptions build = OpenAiChatOptions.builder()
+                .model(MODEL)
+                .temperature(0.8)
+                .maxTokens(10000)
                 .build();
 
 
-        List<Document> documents = myVectorStore.similaritySearch(request);
+        OpenAiChatModel model = OpenAiChatModel.builder()
+                .openAiApi(openAiApi)
+                .build();
 
-        for (Document document : documents) {
-            log.info("doc{}\n\n\n\n", JSON.toJSONString( document, SerializerFeature.PrettyFormat));
+        ChatClient chatClient = ChatClient.builder(model)
+                .defaultOptions(build)
+                .build();
+
+
+        log.info("123456");
+
+        try {
+
+            // 使用 Resource 而不是 URL
+            org.springframework.core.io.Resource imageResource = new org.springframework.core.io.FileSystemResource(imagePath);
+
+            String out = chatClient.prompt()
+                    .user(userSpec -> userSpec
+                            .text("请描述这张图片的内容")
+                            .media(MimeTypeUtils.IMAGE_JPEG, imageResource)
+                    )
+                    .call()
+                    .content();
+
+            log.info("图片描述: {}", out);
+
+        } catch (Exception e) {
+            log.error("Error: ", e);
         }
-
-
-
 
     }
 
     @Test
-    void test04() {
-        Agent byId = agentService.getById(1);
-        AiAgent aiAgent = new AiAgent(byId);
-        Vector vector = vectorService.getById(1);
-        MyVectorStore myVectorStore = new MyVectorStore(vector);
-        aiAgent.addVectorStore(myVectorStore);
-        String result = aiAgent.chat("青少年治疗高血压的药物以及使用方法和要点")
-                .collectList()
-                .map(list -> String.join("", list))
-                .block();  // 阻塞等待
-        System.out.println(result);
+    void testRagSingleQuestion() {
+        String complexEnglish = "Dr. Smith, who works at Google Inc., said: \"The project is amazing!\" " +
+                "However, Prof. Johnson's research (published in Science, Vol. 123, pp. 45-67) suggests otherwise. " +
+                "What's your opinion? Email me at john.doe@example.com for details. " +
+                "Mr. Anderson, CEO of Tech Corp., announced: 'We've raised $1.5M!' " +
+                "Isn't that great? Yes, it's wonderful!";
+
+        List<String> sentences = splitEnglishSentences(complexEnglish);
+
+        for (int i = 0; i < sentences.size(); i++) {
+            System.out.println("句子 " + (i + 1) + ": " + sentences.get(i));
+            System.out.println("---");
+        }
     }
 
-    @Test
-    void test05() {
-        String path = "D:/Source/windows/Downloads/高血压.pdf";
+    public static List<String> splitEnglishSentences(String text) {
+        List<String> sentences = new ArrayList<>();
+        BreakIterator iterator = BreakIterator.getSentenceInstance(Locale.CHINESE);
+        iterator.setText(text);
 
-        try (java.io.FileInputStream fis = new java.io.FileInputStream(path)) {
-            MultipartFile multipartFile = new MockMultipartFile(
-                    "file",                    // 表单字段名
-                    "高血压.pdf",               // 原始文件名
-                    "application/pdf",         // Content-Type
-                    fis                        // 输入流
-            );
+        int start = iterator.first();
+        int end = iterator.next();
 
-            FileData fileData = new FileData(multipartFile);
-            Result<List<TextSegment>> result = httpService.fileToMd(fileData);
-            log.info("{}", result);
-        } catch (IOException e) {
-            log.error("读取文件失败: {}", path, e);
+        while (end != BreakIterator.DONE) {
+            String sentence = text.substring(start, end).trim();
+            if (!sentence.isEmpty()) {
+                sentences.add(sentence);
+            }
+            start = end;
+            end = iterator.next();
         }
+
+        return sentences;
     }
 
     @Test
     void testRagAllQuestions() {
         // 1. 初始化 AI Agent（和你代码一致）
-        Agent byId = agentService.getById(1);
+        Agent byId = agentService.getById(2);
         AiAgent aiAgent = new AiAgent(byId);
-        Vector vector = vectorService.getById(1);
+        Vector vector = vectorService.getById(2);
         MyVectorStore myVectorStore = new MyVectorStore(vector);
         aiAgent.addVectorStore(myVectorStore);
 

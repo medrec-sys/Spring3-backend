@@ -10,6 +10,12 @@ import org.springframework.util.Assert;
 
 import java.util.List;
 
+/**
+ * @author 彭超
+ * @version 1.0
+ * @description 重写文档检索类，支持同时读取多个向量库，原生只支持一个
+ * @date 2026-04-24 20:18
+ */
 public final class MultiVectorStoreDocumentRetriever implements DocumentRetriever {
     private final List<MyVectorStore> vectorStores;
     private final SearchRequest searchRequest;
@@ -24,6 +30,10 @@ public final class MultiVectorStoreDocumentRetriever implements DocumentRetrieve
     }
 
 
+
+    /**
+     * @description 重新方法以支持多个数据库
+     */
 
     @NotNull
     @Override
