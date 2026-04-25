@@ -29,7 +29,6 @@ public class MyDocumentPostProcessor implements DocumentPostProcessor
         int topK = (Integer) query.context().getOrDefault("topK", 5);
 
         log.debug("删选docs");
-        log.debug("documents: {}", JSON.toJSONString(documents, SerializerFeature.PrettyFormat));
         // 处理文档
         return documents.stream()
                 .sorted(Comparator.comparing(this::getSimilarityScore).reversed())  // ✅ 降序

@@ -61,7 +61,7 @@ public class AsyncTaskUtil {
             task.status = status;
             task.code = code;
             putTask(taskId, task);
-            log.info("更新任务：{}--{}", taskId, task);
+            log.info("\r更新任务：{}--{}", taskId, task);
         } else {
             throw new BusinessException("任务不存在");
         }

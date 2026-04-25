@@ -27,6 +27,14 @@ public class ReusableMultipartFile implements MultipartFile {
         this.content = source.getBytes();
     }
 
+    public ReusableMultipartFile(String name, String originalFilename, String contentType, byte[] content) {
+        this.name = name;
+        this.originalFilename = originalFilename;
+        this.contentType = contentType;
+        this.content = content;
+    }
+
+
     @Override
     public @NotNull String getName() {
         return name;

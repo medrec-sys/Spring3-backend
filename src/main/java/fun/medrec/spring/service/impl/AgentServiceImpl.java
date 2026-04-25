@@ -22,6 +22,7 @@ import fun.medrec.spring.service.VectorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -131,6 +132,15 @@ public class AgentServiceImpl extends ServiceImpl<AgentMapper, Agent> implements
         }
 
         return documents;
+    }
+
+    @Override
+    @Transactional
+    public Integer deleteById(Integer id) {
+        // 选删除agent vector关联表
+        agentVectorMapper.delete(new LambdaQueryWrapper<AgentVector>().eq(AgentVector::getAgentId, id));
+        // 删除agent
+        return  agentMapper.deleteById(id);
     }
 
     @Override

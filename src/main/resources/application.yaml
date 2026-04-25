@@ -1,7 +1,7 @@
 spring:
   config:
     import:
-      - optional:classpath:args-dev.yaml
+      - optional:classpath:args.yaml
   servlet:
     multipart:
       max-file-size: 1024MB
@@ -25,7 +25,9 @@ spring:
       api-key:  ${A_LI_YUN-API-KEY}
       chat:
         options:
-          model: "qwen3-max"
+          model: "qwen-plus"
+          vlm: "qwen3.5-plus"
+
       embedding:
         options:
           model: "text-embedding-v4"

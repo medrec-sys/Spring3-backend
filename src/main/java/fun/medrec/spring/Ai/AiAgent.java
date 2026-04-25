@@ -21,17 +21,19 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.rag.advisor.RetrievalAugmentationAdvisor;
-import org.springframework.ai.rag.preretrieval.query.expansion.MultiQueryExpander;
-import org.springframework.ai.rag.preretrieval.query.transformation.CompressionQueryTransformer;
-import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
 import org.springframework.ai.template.st.StTemplateRenderer;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.client.RestClient;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class AiAgent {
@@ -39,64 +41,32 @@ public class AiAgent {
     private static OpenAiApi openAiApi;
     private static JdbcTemplate jdbcTemplate;
     private static final String SEARCH_TEMPLATE = """
-        用户问题：{query}
-        
-        相关上下文：
-        ---------------------
-        {context}
-        ---------------------
-        
-        回答规则：
-        1. 严格基于上述上下文信息回答，不要使用你的先验知识。
-        2. 如果上下文包含直接答案，请简洁、准确地回答。
-        3. 如果上下文不包含直接答案，但包含相关、可推断的信息，请进行合理的逻辑整合与推断，并在回答中明确说明推断依据。
-        4. 如果上下文完全没有相关信息，请直接说明“上下文中未提供相关信息”，并简要列出上下文实际覆盖的主要内容范围。
-        5. 回答要结构清晰、客观准确。
-        
-        请回答：
-        """;
-    private static final String REWRITER_TEMPLATE = """
-            给定用户查询，将其重写以在查询{target}时获得更好的结果。
-            移除任何无关信息，并确保查询简洁且具体。
-            
-            原始查询：
-            {query}
-            
-            重写后的查询：
-            """;
-
-    private static final String COMPRESSION_TEMPLATE = """
-            请将新问题与对话历史结合，生成一个完整的独立查询。
-            
-            示例：
-            历史：用户问"北京天气怎么样？"
-            新问题："明天呢？"
-            独立查询："北京明天天气怎么样？"
-            
-            现在请处理：
-            对话历史：{history}
-            新问题：{query}
-            
-            独立查询：
-            """;
-
-    private static final String EXPANSION_PROMPT = """
-            你是专业的RAG查询优化专家，擅长生成高质量检索问句。
-            请为用户问题生成**{number}个语义等价、表述不同**的查询变体，用于提升向量库检索召回率。
-
-            生成规则：
-            1. 严格保留原始问题的核心意图，不改变主题与诉求。
-            2. 智能替换同义词、近义词、相关专业术语（如青年→青少年、年轻人、低龄人群）。
-            3. 从不同视角生成变体（定义、原因、治疗、方案、注意事项等），扩大检索覆盖。
-            4. 语句简洁、关键词明确，适合向量检索。
-            5. **禁止任何解释、标题、序号、多余内容**，只输出纯查询变体。
-            6. 每个查询变体占一行，仅用换行分隔。
-            7. 与用户的友好交互型问题与文档知识无关可以直接返回查询语句，例如：你是谁？ | 你好！ | 你可以回答哪些问题？
-
             用户问题：{query}
-
-            查询变体：
+            
+            相关上下文（每段内容开头 <ID>数字</ID> 是文档唯一ID）：
+            ---------------------
+            {context}
+            ---------------------
+            
+            回答规则：
+            -- 内容要求
+            1. 严格基于上述上下文信息回答，不要使用你的先验知识。
+            2. 如果上下文包含直接答案，请简洁、准确地回答。
+            3. 如果上下文不包含直接答案，但包含相关、可推断的信息，请进行合理的逻辑整合与推断，并在回答中明确说明推断依据。
+            4. 如果上下文完全没有相关信息，请直接说明“上下文中未提供相关信息”，并简要列出上下文实际覆盖的主要内容范围。
+            5. 回答要结构清晰、客观准确。
+            
+            -- 返回的参考文档格式要求
+            1. 回答中**每一句话**只要使用了上下文内容，必须在句尾**直接标注对应的文档ID**，格式： <ID>id</ID>。
+               示例：AI生成技术正在快速发展 <ID>1001</ID>，在多领域得到应用<ID>1002</ID>。
+            2. 引用ID必须紧跟在对应句子后面，**不要统一放在最后**。
+            3. 如果一句话用到多个文档，可同时标注：<ID>1006</ID><ID>1005</ID>。
+            4. 不编造ID，不编造内容，不添加无关信息。
+            5. 重复的id前面引用过就不要引用
+            
+            请直接开始回答：
             """;
+    public final MyQueryExpander ex;
 
     private ChatClient client;
     private final Agent agent;
@@ -111,7 +81,15 @@ public class AiAgent {
     public static void init(JdbcTemplate jdbcTemplate, String baseUrl, String apiKey, String modelName) {
         AiAgent.modelName = modelName;
         AiAgent.jdbcTemplate = jdbcTemplate;
+
+        RestClient.Builder customRestClientBuilder = RestClient.builder()
+                .requestFactory(ClientHttpRequestFactoryBuilder.simple()
+                        .build(ClientHttpRequestFactorySettings.defaults()
+                                .withReadTimeout(Duration.ofSeconds(3000))));
+
+
         AiAgent.openAiApi = OpenAiApi.builder()
+                .restClientBuilder(customRestClientBuilder)
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .build();
@@ -155,12 +133,6 @@ public class AiAgent {
         ChatClient.Builder builder = ChatClient
                 .builder(model);
 
-        // 用于重写用户查询的model，使用户的问题更精准
-        ChatClient.Builder rewriterBuilder = ChatClient.builder(model);
-        // 用于压缩对话历史的model
-        ChatClient.Builder compressionQueryBuilder = ChatClient.builder(model);
-        // 用于扩展查询
-        ChatClient.Builder expansionQueryBuilder = ChatClient.builder(model);
 
         // 配置记忆
         ChatMemoryRepository chatMemoryRepository = JdbcChatMemoryRepository.builder()
@@ -179,40 +151,19 @@ public class AiAgent {
         DocumentAdvisor documentAdvisor = new DocumentAdvisor(this);
         builder.defaultAdvisors(documentAdvisor);
 
-        // 配置对话重写,历史消息压缩,查询扩展
-        PromptTemplate rewriterPromptTemplate = PromptTemplate.builder()
-                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
-                .template(REWRITER_TEMPLATE)
-                .build();
-        PromptTemplate compressionPromptTemplate = PromptTemplate.builder()
-                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
-                .template(COMPRESSION_TEMPLATE)
-                .build();
-        PromptTemplate expansionPromptTemplate = PromptTemplate.builder()
-                .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
-                .template(EXPANSION_PROMPT)
-                .build();
+        // 配置
+
         PromptTemplate searchPromptTemplate = PromptTemplate.builder()
                 .renderer(StTemplateRenderer.builder().startDelimiterToken('{').endDelimiterToken('}').build())
                 .template(SEARCH_TEMPLATE)
                 .build();
 
-        // 重新查询增强，使其根据专业
-        RewriteQueryTransformer transformer = RewriteQueryTransformer.builder()
-                .chatClientBuilder(rewriterBuilder.build().mutate())
-                .promptTemplate(rewriterPromptTemplate)
+        MyQueryExpander expander = MyQueryExpander.builder()
+                .chatClient(builder.build().mutate().build())
                 .build();
-        // 结合历史对话优化查询
-        CompressionQueryTransformer compressionTransformer = CompressionQueryTransformer.builder()
-                .chatClientBuilder(compressionQueryBuilder.build().mutate())
-                .promptTemplate(compressionPromptTemplate)
-                .build();
-        // 根据已有查询，格外生成多方面的查询
-        MultiQueryExpander queryExpander = MultiQueryExpander.builder()
-                .chatClientBuilder(expansionQueryBuilder)
-                .promptTemplate(expansionPromptTemplate)
-                .numberOfQueries(10)
-                .build();
+        this.ex = expander;
+
+
         // 文档查询器
         MultiVectorStoreDocumentRetriever documentRetriever = MultiVectorStoreDocumentRetriever.builder()
                 .vectorStores(stores)
@@ -222,6 +173,18 @@ public class AiAgent {
         // 查询增强器，用于将检索到的文档内容整合到用户查询中
         MyContextualQueryAugmenter augmenter = MyContextualQueryAugmenter.builder()
                 .allowEmptyContext(true)
+                // 自定义文本应该如何嵌入查询条件里，这里包含文档内容和文档id，用于使ai生成文本使标记文档引用id
+                .documentFormatter(
+                        docs -> docs.stream().map(
+                                document -> {
+                                    StringBuilder s = new StringBuilder();
+                                    String id = document.getMetadata().get("id").toString();
+                                    // 核心：用 <ID>id</ID> 格式，模型才会在回答里自动标记
+                                    s.append("<ID>").append(id).append("</ID>").append(document.getText()).append("\n");
+                                    return s.toString();
+                                }
+                        ).collect(Collectors.joining(System.lineSeparator()))
+                )
                 .promptTemplate(searchPromptTemplate)
                 .build();
         // 检索后处理器
@@ -231,8 +194,7 @@ public class AiAgent {
                 .documentRetriever(documentRetriever)
                 .documentPostProcessors(myDocumentPostProcessor)
                 .queryAugmenter(augmenter)
-                .queryExpander(queryExpander)
-                .queryTransformers(transformer, compressionTransformer)
+                .queryExpander(expander)
                 .build();
         builder.defaultAdvisors(retrievalAugmentationAdvisor);
         client = builder.build();
@@ -250,6 +212,7 @@ public class AiAgent {
                 )
                 .stream()
                 .content();
+
     }
 
     public void delete(int id) {

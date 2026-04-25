@@ -23,4 +23,6 @@ public interface AgentService extends IService<Agent> {
     Integer create(Agent agent);
 
     List<Document> getVectors(AiAgent agent);
+
+    Integer deleteById(Integer id);
 }

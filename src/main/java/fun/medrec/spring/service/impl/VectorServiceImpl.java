@@ -9,6 +9,7 @@ import fun.medrec.spring.domain.dto.VectorSearchArgs;
 import fun.medrec.spring.domain.entity.AgentVector;
 import fun.medrec.spring.domain.entity.Knowledge;
 import fun.medrec.spring.domain.entity.Vector;
+import fun.medrec.spring.exception.BusinessException;
 import fun.medrec.spring.interceptor.UserContext;
 import fun.medrec.spring.mapper.AgentVectorMapper;
 import fun.medrec.spring.mapper.VectorMapper;
@@ -67,6 +68,7 @@ public class VectorServiceImpl extends ServiceImpl<VectorMapper, Vector> impleme
         LambdaQueryWrapper<Vector> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Vector::getId, id);
         vectorMapper.deleteById(id);
+        agentVectorMapper.delete( new LambdaQueryWrapper<AgentVector>().eq(AgentVector::getVectorId, id));
         MyVectorStore.deleteStore(id);
         return id;
     }
@@ -91,7 +93,7 @@ public class VectorServiceImpl extends ServiceImpl<VectorMapper, Vector> impleme
         queryWrapper.eq(Vector::getId, id);
         Vector vector = vectorMapper.selectOne(queryWrapper);
         if (vector == null) {
-            throw new RuntimeException("向量库不存在,id:" + id);
+            throw new BusinessException("向量库不存在,id:" + id);
         }
         return new MyVectorStore(vector);
     }

@@ -37,6 +37,7 @@ public class VectorController {
 
     @DeleteMapping("/{id}")
     public Result<Integer> delete(@PathVariable Integer id) {
+        log.info("删除向量 id: {}", id);
         return Result.success(vectorService.delete(id));
     }
 

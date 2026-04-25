@@ -30,8 +30,9 @@ public class AgentController {
     }
 
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Integer id) {
-        return agentService.removeById(id) ? Result.success() : Result.error("删除失败");
+    public Result<Integer> delete(@PathVariable Integer id) {
+        log.info("删除智能体 id: {}", id);
+        return Result.success(agentService.deleteById(id));
     }
 
     @PostMapping

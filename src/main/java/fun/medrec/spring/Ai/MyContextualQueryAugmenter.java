@@ -29,22 +29,22 @@ public final class MyContextualQueryAugmenter implements QueryAugmenter {
 
     private static final Logger logger = LoggerFactory.getLogger(MyContextualQueryAugmenter.class);
     private static final PromptTemplate DEFAULT_PROMPT_TEMPLATE = new PromptTemplate("""
-			Context information is below.
+			上下文信息如下。
 
 			---------------------
 			{context}
 			---------------------
 
-			Given the context information and no prior knowledge, answer the query.
+			请根据上述上下文信息回答问题，不要依赖你自身的先验知识。
 
-			Follow these rules:
+			请遵循以下规则：
 
-			1. If the answer is not in the context, just say that you don't know.
-			2. Avoid statements like "Based on the context..." or "The provided information...".
+			1. 如果答案不在上下文中，直接说你不知道。
+			2. 避免使用“根据上下文……”或“所提供的信息……”这类引导性语句。
 
-			Query: {query}
+			问题：{query}
 
-			Answer:
+			回答：
 			""");
 
     private static final PromptTemplate DEFAULT_EMPTY_CONTEXT_PROMPT_TEMPLATE = new PromptTemplate("""

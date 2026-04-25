@@ -2,7 +2,6 @@ package fun.medrec.spring.config;
 
 import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.Ai.MyVectorStore;
-import fun.medrec.spring.utils.ModelUtil;
 import io.minio.MinioClient;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -61,7 +60,6 @@ public class Initializer {
         MyVectorStore.init(stringRedisTemplate, jedisPooled, baseUrl, apiKey, model);
 
         AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel);
-        ModelUtil.init(baseUrl, apiKey, chatModel);
 
         MinioClient minioClient = MinioClient.builder()
                 .endpoint(serverPoint)

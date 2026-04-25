@@ -102,18 +102,17 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
             asyncTaskUtil.updateTask(taskId, "等待执行许可");
             semaphore.acquire();
 
-            List<MinerUtil.ContentItem> contentItems = List.of();
+            List<MinerUtil.ContentItem> contentItems;
+
             try {
                 asyncTaskUtil.updateTask(taskId, "文件转md");
-                String s = minerUtil.uploadAndParse(List.of(file));
+                String s = minerUtil.uploadAndParse(file);
                 while (true) {
                     MinerUtil.PollingResult pollingResult = minerUtil.getZipUrl(s);
                     sleep(1000);
                     if (pollingResult.isSuccess()) {
                         List<String> zipUrls = pollingResult.getZipUrls();
-                        for (String url : zipUrls) {
-                            contentItems = minerUtil.handleParseResult(url);
-                        }
+                        contentItems = minerUtil.handleParseResult(zipUrls);
                         break;
                     } else {
                         asyncTaskUtil.updateTask(taskId, pollingResult.getInfo());
@@ -129,7 +128,7 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
                 asyncTaskUtil.updateTask(taskId, "总结知识片段");
                 List<TextSegment> summarizer = textUtil.strengthenWithSpilt(textSegments);
 
-               // 保存知识块数量
+                // 保存知识块数量
                 LambdaUpdateWrapper<Knowledge> wrapper = new LambdaUpdateWrapper<>();
                 wrapper.eq(Knowledge::getId, knowledgeId);
                 wrapper.set(Knowledge::getChunk, summarizer.size());
@@ -140,9 +139,10 @@ public class KnowledgeServiceImpl extends ServiceImpl<KnowledgeMapper, Knowledge
                 MinioUtil.loadFile(file, path);
 
                 // 5. 向量库写入
-                asyncTaskUtil.updateTask(taskId, "写入向量库");
+                asyncTaskUtil.updateTask(taskId, "写入向量库：" + summarizer.size() + "条");
                 store = new MyVectorStore(vector);
                 List<Document> documents = textUtil.toDocsWithSplit(summarizer);
+                log.debug("向量库写入：{}条", documents.size());
                 store.addDocuments(documents);
 
                 asyncTaskUtil.finishTask(taskId);

@@ -5,6 +5,7 @@ import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Vector;
+import fun.medrec.spring.exception.BusinessException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
@@ -165,6 +166,14 @@ public class MyVectorStore {
                         "SEPARATOR".getBytes(),
                         ",".getBytes(),
 
+                        // bbox
+                        "$.bbox".getBytes(),
+                        "AS".getBytes(),
+                        "bbox".getBytes(),
+                        "TAG".getBytes(),
+                        "SEPARATOR".getBytes(),
+                        ",".getBytes(),
+
                 };   // 发送命令
                 return connection.execute("FT.CREATE", args);
             });
@@ -198,7 +207,8 @@ public class MyVectorStore {
                         RedisVectorStore.MetadataField.tag("page"),
                         RedisVectorStore.MetadataField.tag("id"),
                         RedisVectorStore.MetadataField.tag("text"),
-                        RedisVectorStore.MetadataField.tag("parentId")
+                        RedisVectorStore.MetadataField.tag("parentId"),
+                        RedisVectorStore.MetadataField.tag("bbox")
                 )
                 .initializeSchema(true)
                 .build();
@@ -238,7 +248,7 @@ public class MyVectorStore {
 
                     // 添加日志记录批次处理
                     synchronized (System.out) {
-                        log.info("开始处理第 {}/{} 批次，文档数量：{}，范围：[{}-{}]",
+                        log.info("\r开始处理第 {}/{} 批次，文档数量：{}，范围：[{}-{}]",
                                 batchIndex + 1, batchCount, batch.size(), start, end - 1);
                     }
 
@@ -307,7 +317,7 @@ public class MyVectorStore {
                 .build();
         SearchRequest childRequest = SearchRequest
                 .from(request)
-                .topK(request.getTopK())
+                .topK(request.getTopK() * 2)
                 .filterExpression(childExpression)
                 .build();
         List<Document> childDocuments = redisVectorStore.similaritySearch(childRequest);
@@ -350,7 +360,6 @@ public class MyVectorStore {
         List<Document> documents = redisVectorStore.similaritySearch(parentRequest);
 
 
-
         List<Document> list = documents.stream().map(document -> {
             String parentId = (String) document.getMetadata().get("id");
             Double score = childSimilarityScores.get(parentId);
@@ -358,14 +367,9 @@ public class MyVectorStore {
                     .score(score)
                     .build();
         }).toList();
-
-        log.debug("list: {}", JSON.toJSONString(list, SerializerFeature.PrettyFormat));
-        log.debug("childDocuments: {}", JSON.toJSONString(childDocuments, SerializerFeature.PrettyFormat));
-
         return list;
 
     }
-
 
 
     /**
@@ -411,20 +415,49 @@ public class MyVectorStore {
 
     // 删除文章
     public void delete(int id, int n) {
-        int cycle = n / 10 + 1;
         Filter.Expression expression = new Filter.Expression(
                 Filter.ExpressionType.EQ,
                 new Filter.Key("bookId"),
                 new Filter.Value(id + "")
         );
-        for (int i = 0; i < cycle; i++) {
-            redisVectorStore.delete(expression);
+        SearchRequest request = SearchRequest.builder()
+                .filterExpression(expression)
+                .similarityThreshold(0)
+                .topK(n)  // 足够大
+                .build();
+
+        List<Document> documents = redisVectorStore.similaritySearch(request);
+        log.debug("删除文章: {}", documents.size());
+        redisVectorStore.delete(documents.stream().map(Document::getId).toList());
+        List<Document> docs = redisVectorStore.similaritySearch(request);
+        if (!docs.isEmpty()) {
+            log.debug("删除失败: {}", docs.size());
         }
+        log.debug("删除成功");
+
     }
 
     // 释放资源
     public void release() {
         deleteIndex();
         clear();
+    }
+
+
+    public List<Document> getDocByIds(List<String> ids) {
+        log.debug("获取文档: {}", ids);
+        Filter.Expression expression = new FilterExpressionBuilder()
+                .in("id", ids.toArray())
+                .build();
+        SearchRequest request = SearchRequest.builder()
+                .filterExpression(expression)
+                .similarityThreshold(0)
+                .topK(ids.size())
+                .build();
+        List<Document> documents = redisVectorStore.similaritySearch(request);
+        if (documents.isEmpty()) {
+            throw new BusinessException("文档不存在:" +  ids);
+        }
+        return documents;
     }
 }

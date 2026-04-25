@@ -3,6 +3,7 @@ package fun.medrec.spring.domain.bo;
 import lombok.Data;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -11,6 +12,7 @@ public class TextSegment {
     private int bookId;
     private int page;
     private String content;
+    private List<Integer> bbox;
     private Map<String, String> metadata = new HashMap<>();
 
 
