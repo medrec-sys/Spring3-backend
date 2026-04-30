@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import fun.medrec.spring.domain.entity.Agent;
 import fun.medrec.spring.domain.entity.Chat;
+import fun.medrec.spring.utils.ModelUtil;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -69,6 +70,7 @@ public class AiAgent {
     public final MyQueryExpander ex;
 
     private ChatClient client;
+    private static ModelUtil modelUtil;
     private final Agent agent;
     private final List<MyVectorStore> stores = new ArrayList<>();
     @Getter
@@ -78,7 +80,7 @@ public class AiAgent {
     @Getter
     private static Cache<Integer, AiAgent> agentCache;
 
-    public static void init(JdbcTemplate jdbcTemplate, String baseUrl, String apiKey, String modelName) {
+    public static void init(JdbcTemplate jdbcTemplate, String baseUrl, String apiKey, String modelName, ModelUtil modelUtil) {
         AiAgent.modelName = modelName;
         AiAgent.jdbcTemplate = jdbcTemplate;
 
@@ -100,6 +102,7 @@ public class AiAgent {
                 .expireAfterAccess(30, TimeUnit.MINUTES)
                 .build();
 
+        AiAgent.modelUtil = modelUtil;
     }
 
     public static AiAgent getAgent(Integer id) {
@@ -159,7 +162,7 @@ public class AiAgent {
                 .build();
 
         MyQueryExpander expander = MyQueryExpander.builder()
-                .chatClient(builder.build().mutate().build())
+                .modelUtils(modelUtil)
                 .build();
         this.ex = expander;
 

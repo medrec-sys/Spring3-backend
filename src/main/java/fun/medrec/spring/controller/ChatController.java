@@ -4,12 +4,16 @@ import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.domain.common.Result;
 import fun.medrec.spring.domain.entity.Chat;
 import fun.medrec.spring.service.AgentService;
+import fun.medrec.spring.utils.ModelUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -18,6 +22,8 @@ import java.util.List;
 public class ChatController {
     @Autowired
     private AgentService agentService;
+    @Autowired
+    private ModelUtil modelUtil;
 
     @PostMapping(value = "/chat/{id}", produces = "text/html;charset=utf-8")
     public Flux<String> chat(@RequestParam String question, @PathVariable Integer id) {
@@ -26,6 +32,18 @@ public class ChatController {
             agent = agentService.createAgent(id);
         }
         return agent.chat(question);
+    }
+
+    @PostMapping(value = "/query", produces = "text/html;charset=utf-8")
+    public Flux<String> query(
+            @RequestParam String query,
+            @RequestParam Integer n,
+            @RequestBody List<String> messageList
+            ) {
+        List<UserMessage> l = messageList.stream().map(UserMessage::new).toList();
+        List<Message> list = new ArrayList<>(l);
+
+        return modelUtil.searchWithFlux(query, list, n);
     }
 
     // 加载历史聊天记录

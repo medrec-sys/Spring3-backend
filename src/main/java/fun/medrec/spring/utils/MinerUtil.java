@@ -18,6 +18,7 @@ import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.pdfbox.multipdf.Splitter;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -62,16 +63,19 @@ public class MinerUtil {
     // 最大页码
     private final Integer maxPage = 200;
     // 最大文件大小  200M
-    private final Integer maxSize = 200 * 1024 * 1024;
+    private final Integer maxSize;
     // 用于合并文件的块大小
-    private final Integer blockMinSize = 500;
+    private final Integer blockMinSize;
     // 用于分割的文本块的最大值
-    private final Integer blockMaxSize = 2000;
+    private final Integer blockMaxSize;
 
     private final ModelUtil modelUtil;
 
     public MinerUtil(ModelUtil modelUtil) {
         this.modelUtil = modelUtil;
+        maxSize = 200 * 1024 * 1024;
+        blockMinSize = 500;
+        blockMaxSize = 2000;
     }
 
     /**
@@ -89,7 +93,7 @@ public class MinerUtil {
     /**
      * @description 分割pfd
      */
-    private List<MultipartFile> splitPdf(MultipartFile file, Integer num) {
+    private List<MultipartFile> splitPdf(MultipartFile file) {
         if (file.getOriginalFilename() == null || !file.getOriginalFilename().contains(".")) {
             throw new BusinessException("文件名错误:" + file.getOriginalFilename());
         }
@@ -146,8 +150,7 @@ public class MinerUtil {
         log.debug("文件大小：{}M", file.getSize() / 1024 / 1024);
         log.debug("文件页数：{}", pages);
         if (pages > maxPage) {
-            int splitCount = (int) Math.ceil((double) pages / maxPage);
-            return splitPdf(file, splitCount);
+            return splitPdf(file);
         }
         if (file.isEmpty()) {
             throw new BusinessException("文件不能为空");
@@ -170,18 +173,7 @@ public class MinerUtil {
      */
     private MinerUResponse.MinerUData applyParseUrl(List<MultipartFile> files) {
         // 1. 构建请求数据
-        List<Map<String, Object>> fileList = new ArrayList<>();
-        for (MultipartFile file : files) {
-            Map<String, Object> fileInfo = new HashMap<>();
-            fileInfo.put("name", file.getOriginalFilename());
-            fileInfo.put("data_id", "abcd");
-            fileInfo.put("is_ocr", true);
-            fileList.add(fileInfo);
-        }
-
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("files", fileList);
-        requestBody.put("model_version", "vlm");
+        Map<String, Object> requestBody = getStringObjectMap(files);
 
         try {
             // 发送请求
@@ -202,6 +194,22 @@ public class MinerUtil {
         }
     }
 
+    private static @NotNull Map<String, Object> getStringObjectMap(List<MultipartFile> files) {
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        for (MultipartFile file : files) {
+            Map<String, Object> fileInfo = new HashMap<>();
+            fileInfo.put("name", file.getOriginalFilename());
+            fileInfo.put("data_id", "t");
+            fileInfo.put("is_ocr", true);
+            fileList.add(fileInfo);
+        }
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("files", fileList);
+        requestBody.put("model_version", "vlm");
+        return requestBody;
+    }
+
     /**
      * @param files      文件列表
      * @param minerUData 包含文件id和网络地址
@@ -218,7 +226,7 @@ public class MinerUtil {
                 log.debug("开始上传文件: {}", uploadUrl);
 
                 java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                        new java.net.URL(uploadUrl).openConnection();
+                        java.net.URI.create(uploadUrl).toURL().openConnection();
                 conn.setRequestMethod("PUT");
                 conn.setDoOutput(true);
 
@@ -487,19 +495,8 @@ public class MinerUtil {
                     continue;
                 }
 
-                List<String> strings = new ArrayList<>();
-                if (item.getTableBody().length() < blockMaxSize) {
-                    strings.add(item.getTableBody());
-                } else {
-                    int len = item.getTableBody().length();
-                    int blockNum = (len + blockMaxSize - 1) / blockMaxSize;
-                    for (int i = 0; i < blockNum; i++) {
-                        int start = i * blockMaxSize;
-                        int end = Math.min(start + blockMaxSize, len);
-                        String chunk = item.getTableBody().substring(start, end);
-                        strings.add(chunk);
-                    }
-                }
+
+                List<String> strings = getStrings(item);
 
                 for (String string : strings) {
                     ContentItem contentItem = ContentItem.copyToText(item);
@@ -555,7 +552,7 @@ public class MinerUtil {
         // 合并字数过少的文本
         List<ContentItem> merged = new ArrayList<>();
         for (ContentItem curr : result) {
-            if (merged.isEmpty() || merged.getLast().getText().length() >= blockMinSize) {
+            if (merged.isEmpty() || merged.getLast().getText().length() >= blockMinSize || !Objects.equals(merged.getLast().getPageIdx(), curr.getPageIdx())) {
                 merged.add(curr);
             } else {
                 ContentItem last = merged.getLast();
@@ -567,6 +564,23 @@ public class MinerUtil {
             }
         }
         return merged;
+    }
+
+    private @NotNull List<String> getStrings(ContentItem item) {
+        List<String> strings = new ArrayList<>();
+        if (item.getTableBody().length() < blockMaxSize) {
+            strings.add(item.getTableBody());
+        } else {
+            int len = item.getTableBody().length();
+            int blockNum = (len + blockMaxSize - 1) / blockMaxSize;
+            for (int i = 0; i < blockNum; i++) {
+                int start = i * blockMaxSize;
+                int end = Math.min(start + blockMaxSize, len);
+                String chunk = item.getTableBody().substring(start, end);
+                strings.add(chunk);
+            }
+        }
+        return strings;
     }
 
 

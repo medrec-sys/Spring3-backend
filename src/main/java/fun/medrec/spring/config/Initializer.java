@@ -2,6 +2,7 @@ package fun.medrec.spring.config;
 
 import fun.medrec.spring.Ai.AiAgent;
 import fun.medrec.spring.Ai.MyVectorStore;
+import fun.medrec.spring.utils.ModelUtil;
 import io.minio.MinioClient;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -45,13 +46,14 @@ public class Initializer {
     @Value("${minio.bucket}")
     private String bucket;
 
-    final
-    StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
     private final JdbcTemplate jdbcTemplate;
+    private final ModelUtil modelUtil;
 
-    public Initializer(StringRedisTemplate stringRedisTemplate, JdbcTemplate jdbcTemplate) {
+    public Initializer(StringRedisTemplate stringRedisTemplate, JdbcTemplate jdbcTemplate, ModelUtil modelUtil) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.jdbcTemplate = jdbcTemplate;
+        this.modelUtil = modelUtil;
     }
 
     @PostConstruct
@@ -59,7 +61,7 @@ public class Initializer {
         JedisPooled jedisPooled = new JedisPooled(host, port, username, password);
         MyVectorStore.init(stringRedisTemplate, jedisPooled, baseUrl, apiKey, model);
 
-        AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel);
+        AiAgent.init(jdbcTemplate, baseUrl, apiKey, chatModel, modelUtil);
 
         MinioClient minioClient = MinioClient.builder()
                 .endpoint(serverPoint)

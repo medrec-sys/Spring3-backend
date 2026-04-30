@@ -22,11 +22,11 @@ spring:
   ai:
     openai: # openai
       base-url: "https://dashscope.aliyuncs.com/compatible-mode"
-      api-key:  ${A_LI_YUN-API-KEY}
+      api-key: "sk-1ff40835f4a14e39970c2bbfacde8156"
       chat:
         options:
-          model: "qwen-plus"
-          vlm: "qwen3.5-plus"
+          model: "qwen-flash"
+          vlm: "qwen3.5-flash"
 
       embedding:
         options:
@@ -44,7 +44,8 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: 5000ms
-      timeout: 5000
+      timeout: 30000
+      connect-timeout: 5000
 
 mybatis-plus:
   global-config:
